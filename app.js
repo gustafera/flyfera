@@ -1,5 +1,5 @@
 /* =============================================================================
-   flyfera — app.js (Frontend Controller v3)
+   flyfera — app.js (Frontend Controller v4 - Foco Brasil & R$)
    ============================================================================= */
 
 // ── Mock data ──────────────────────────────────────────────────────────────
@@ -40,6 +40,15 @@ const MOCK_DEALS = [
     link: buildMockLink("GIG", "MIA", "2026-11-22")
   },
   {
+    from: "São Paulo", fromCode: "GRU", to: "Brasília", toCode: "BSB",
+    date: "2026-08-27", dateFormatted: "27 de ago. de 2026",
+    price: 340, historicalAvg: 580, discountPct: 41, isEstimated: false,
+    airlineName: "LATAM / GOL / Azul", isExactDate: true,
+    tier: { key: "hot", label: "Imperdível", emoji: "🔥" },
+    tag: "nacional", transfers: 0,
+    link: buildMockLink("GRU", "BSB", "2026-08-27")
+  },
+  {
     from: "Brasília", fromCode: "BSB", to: "Curitiba", toCode: "CWB",
     date: "2026-08-29", dateFormatted: "29 de ago. de 2026",
     price: 295, historicalAvg: 470, discountPct: 37, isEstimated: false,
@@ -56,24 +65,15 @@ const MOCK_DEALS = [
     tier: { key: "good", label: "Boa oferta", emoji: "✅" },
     tag: "internacional", transfers: 1,
     link: buildMockLink("CNF", "LIS", "2026-12-05")
-  },
-  {
-    from: "São Paulo", fromCode: "GRU", to: "Brasília", toCode: "BSB",
-    date: "2026-08-27", dateFormatted: "27 de ago. de 2026",
-    price: 340, historicalAvg: 580, discountPct: 41, isEstimated: false,
-    airlineName: "LATAM Airlines", isExactDate: true,
-    tier: { key: "hot", label: "Imperdível", emoji: "🔥" },
-    tag: "nacional", transfers: 0,
-    link: buildMockLink("GRU", "BSB", "2026-08-27")
   }
 ];
 
 // ── Estado Global ──────────────────────────────────────────────────────────
 let allDeals = [];
 let allNormal = [];
-let filterType = "all";   // all | nacional | internacional
-let filterTier = "all";   // all | hot | good | below
-let sortBy = "discount";  // discount | price
+let filterType = "all";
+let filterTier = "all";
+let sortBy = "discount";
 let updatedAt = null;
 let refreshTimer = null;
 
@@ -136,13 +136,14 @@ function showSkeletons() {
   }
 }
 
-// ── API Fetch com Suporte a Data ───────────────────────────────────────────
-async function fetchDeals(origin, destination, departDate, returnDate) {
+// ── API Fetch com Suporte a 'Só Ida' e Data ────────────────────────────────
+async function fetchDeals(origin, destination, departDate, returnDate, isOneWay = true) {
   const qs = new URLSearchParams();
   if (origin) qs.set("origin", origin);
   if (destination && destination !== "ANY") qs.set("destination", destination);
   if (departDate) qs.set("depart_date", departDate);
   if (returnDate) qs.set("return_date", returnDate);
+  qs.set("one_way", isOneWay ? "true" : "false");
 
   try {
     const res = await fetch(`/api/deals?${qs}`);
@@ -191,10 +192,9 @@ function renderDeals(dealList, normalList = []) {
     const transferLabel = d.transfers === 0 ? "Direto"
       : d.transfers === 1 ? "1 escala" : `${d.transfers} escalas`;
 
-    // Indicação de data
     let dateBadge = `📅 ${d.dateFormatted || d.date || "Data flexível"}`;
     if (searchedDate && d.isExactDate) {
-      dateBadge = `🎯 Data exata · ${d.dateFormatted || d.date}`;
+      dateBadge = `🎯 Data exata: ${d.dateFormatted || d.date}`;
     } else if (searchedDate && d.daysDiff > 0) {
       dateBadge = `📅 ${d.dateFormatted || d.date} (mais próxima)`;
     }
@@ -276,16 +276,14 @@ function renderDeals(dealList, normalList = []) {
         <br><br>
         <a href="${aviasalesUrl}" target="_blank" rel="noopener noreferrer"
            style="display:inline-block;padding:10px 20px;background:var(--amber-dim);color:var(--amber);border:1px solid rgba(255,178,62,.4);border-radius:8px;font-weight:600;font-size:.88rem;text-decoration:none;">
-          Buscar tarifas no parceiro (em R$) →
+          Buscar tarifas no parceiro oficial (em R$) →
         </a>
       </div>`;
     return;
   }
 
-  // Exibir promoções
   dealList.forEach(d => grid.appendChild(createCardElement(d)));
 
-  // Se não há promoções mas há voos normais
   if (!dealList.length && normalList.length) {
     const origin = document.getElementById("origin")?.value || "";
     const destination = document.getElementById("destination")?.value || "";
@@ -293,9 +291,9 @@ function renderDeals(dealList, normalList = []) {
     banner.className = "empty-state";
     banner.style.marginBottom = "16px";
     banner.innerHTML = `
-      <strong>Nenhuma promoção abaixo do histórico para a data</strong>
-      A rota <b>${origin}${destination && destination !== "ANY" ? " → " + destination : ""}</b> está com preços dentro do padrão normal hoje.
-      <br>Abaixo estão as <b>melhores tarifas disponíveis</b> encontradas:`;
+      <strong>Nenhuma promoção fora do comum para esta data</strong>
+      A rota <b>${origin}${destination && destination !== "ANY" ? " → " + destination : ""}</b> está com tarifas no padrão normal de mercado hoje.
+      <br>Abaixo estão as <b>melhores opções disponíveis</b> encontradas:`;
     grid.insertBefore(banner, grid.firstChild);
 
     const sep = document.createElement("div");
@@ -409,7 +407,11 @@ function openModal(deal) {
   const transferLabel = deal.transfers === 0 ? "Voo direto"
     : deal.transfers === 1 ? "1 escala" : `${deal.transfers} escalas`;
   const tagLabel = deal.tag === "nacional" ? "Nacional" : "Internacional";
-  const airlineText = deal.airlineName || "Companhia Aérea";
+  const airlineText = deal.airlineName || "LATAM / GOL / Azul";
+  const searchedDate = document.getElementById("depart")?.value || deal.date || "";
+
+  // Link para o Google Voos Brasil em Reais
+  const googleFlightsUrl = `https://www.google.com/travel/flights?q=voos%20de%20${deal.fromCode}%20para%20${deal.toCode}%20em%20${searchedDate}&hl=pt-BR&gl=BR&curr=BRL`;
 
   const modalBody = document.getElementById("modal-body");
   if (!modalBody) return;
@@ -424,7 +426,7 @@ function openModal(deal) {
         <div class="val">${deal.dateFormatted || deal.date || "Flexível"}</div>
       </div>
       <div class="modal-cell">
-        <div class="lbl">Companhia Aérea</div>
+        <div class="lbl">Companhias</div>
         <div class="val">✈️ ${airlineText}</div>
       </div>
       <div class="modal-cell">
@@ -432,7 +434,7 @@ function openModal(deal) {
         <div class="val">${tagLabel} · ${transferLabel}</div>
       </div>
       <div class="modal-cell">
-        <div class="lbl">Moeda garantida</div>
+        <div class="lbl">Moeda de pagamento</div>
         <div class="val">🇧🇷 Real Brasileiro (R$)</div>
       </div>
     </div>
@@ -444,19 +446,27 @@ function openModal(deal) {
           : `<div style="font-size:.82rem;color:var(--ink-dim);">–</div>`}
       </div>
       <div class="now">
-        <div class="lbl">Preço atual</div>
+        <div class="lbl">Preço de referência</div>
         <div class="amt">${fmtBRL(deal.price)}</div>
       </div>
     </div>
     ${isNormal
-      ? `<div class="modal-note">📊 <strong>Tarifa padrão da rota:</strong> Os valores estão dentro da média histórica. A compra é realizada em Reais (R$) com suporte a Pix e cartões brasileiros.</div>`
-      : `<div class="modal-note">✅ <strong>Desconto detectado:</strong> Preço ${deal.discountPct}% abaixo da média de 3 meses. Pagamento 100% em Reais (R$) emitido diretamente pelas companhias parceiras.</div>`
+      ? `<div class="modal-note">📊 <strong>Tarifa normal de mercado:</strong> Não é uma promoção histórica, mas é uma das melhores tarifas encontradas para a rota. Pagamento 100% em Reais (R$) com suporte a Pix e cartões nacionais.</div>`
+      : `<div class="modal-note">✅ <strong>Desconto detectado:</strong> Preço ${deal.discountPct}% abaixo da média de 3 meses. Pagamento 100% em Reais (R$) com suporte a Pix e cartões brasileiros.</div>`
     }
-    <a class="btn-buy" href="${deal.link || '#'}" target="_blank" rel="noopener noreferrer">
-      Ver voo no parceiro oficial (em R$) &rarr;
-    </a>
-    <p style="text-align:center;font-size:.7rem;color:var(--ink-dim);margin-top:10px;">
-      Você será direcionado com os valores travados em Reais (R$) e opção de emissão direta.
+    
+    <div style="display:flex;flex-direction:column;gap:10px;margin-top:6px;">
+      <a class="btn-buy" href="${deal.link || '#'}" target="_blank" rel="noopener noreferrer">
+        Ver voos no parceiro oficial (em R$) &rarr;
+      </a>
+      <a href="${googleFlightsUrl}" target="_blank" rel="noopener noreferrer"
+         style="display:block;width:100%;background:rgba(255,255,255,.07);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:12px;font-weight:600;font-size:.88rem;text-align:center;text-decoration:none;transition:background .15s;">
+        🔍 Comparar no Google Voos Brasil (R$)
+      </a>
+    </div>
+
+    <p style="text-align:center;font-size:.7rem;color:var(--ink-dim);margin-top:12px;line-height:1.4;">
+      💡 As passagens são operadas por LATAM, GOL, Azul ou parceiros oficiais. Caso a página externa carregue em dólares no seu navegador, você pode alternar a moeda no topo do site para BRL (R$).
     </p>`;
 
   const ov = document.getElementById("modal-overlay");
@@ -484,8 +494,9 @@ function resetAutoRefresh() {
     const destination = document.getElementById("destination")?.value || "";
     const departDate = document.getElementById("depart")?.value || "";
     const returnDate = document.getElementById("return")?.value || "";
+    const isOneWay = document.querySelector(".trip-toggle button.active")?.dataset.trip === "one";
 
-    const { deals, normalFallback } = await fetchDeals(origin, destination, departDate, returnDate);
+    const { deals, normalFallback } = await fetchDeals(origin, destination, departDate, returnDate, isOneWay);
     allDeals = deals;
     allNormal = normalFallback;
     renderBoard(allDeals);
@@ -496,7 +507,6 @@ function resetAutoRefresh() {
 
 // ── Inicialização ──────────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", () => {
-  // Ajustar data mínima nos inputs para hoje
   const todayIso = new Date().toISOString().split("T")[0];
   const departInput = document.getElementById("depart");
   const returnInput = document.getElementById("return");
@@ -559,8 +569,9 @@ document.addEventListener("DOMContentLoaded", () => {
       const destination = document.getElementById("destination")?.value || "";
       const departDate = document.getElementById("depart")?.value || "";
       const returnDate = document.getElementById("return")?.value || "";
+      const isOneWay = document.querySelector(".trip-toggle button.active")?.dataset.trip === "one";
 
-      const { deals, normalFallback } = await fetchDeals(origin, destination, departDate, returnDate);
+      const { deals, normalFallback } = await fetchDeals(origin, destination, departDate, returnDate, isOneWay);
       allDeals = deals;
       allNormal = normalFallback;
 
