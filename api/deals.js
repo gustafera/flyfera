@@ -37,7 +37,6 @@ const AIRPORT_NAMES = {
   UDI: "Uberlândia",
   VIX: "Vitória",
   IOS: "Ilhéus",
-  PPB: "Presidente Prudente",
   RAO: "Ribeirão Preto",
   // Portugal
   LIS: "Lisboa", OPO: "Porto",
@@ -56,23 +55,22 @@ const AIRPORT_NAMES = {
   FCO: "Roma", MXP: "Milão",
   AMS: "Amsterdã", FRA: "Frankfurt",
   // Outros
-  DXB: "Dubai", CUN: "Cancún",
-  NRT: "Tóquio", GRU: "São Paulo",
+  DXB: "Dubai", CUN: "Cancún", NRT: "Tóquio",
 };
 
 const BR_AIRPORTS = new Set([
   "GRU","CGH","VCP","GIG","SDU","BSB","CNF","PLU","POA","CWB",
   "REC","SSA","FOR","FLN","MCZ","BEL","MAO","NAT","SLZ","THE",
   "AJU","JPA","PMW","CGB","CGR","PVH","BVB","MCP","RBR","IGU",
-  "JOI","NVT","LDB","MGF","UDI","VIX","IOS","PPB","RAO"
+  "JOI","NVT","LDB","MGF","UDI","VIX","IOS","RAO"
 ]);
 
 function cityName(code) {
   return AIRPORT_NAMES[code] || code;
 }
 
-// ✅ CommonJS — compatível com Vercel sem package.json extra
-module.exports = async function handler(req, res) {
+// ✅ export default — compatível com "type": "module" no package.json
+export default async function handler(req, res) {
   const token = process.env.TRAVELPAYOUTS_TOKEN;
 
   if (!token) {
