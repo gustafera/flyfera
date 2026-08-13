@@ -1,37 +1,77 @@
 // =============================================================================
 // /api/deals.js — Vercel Serverless Function
-// -----------------------------------------------------------------------------
-// Essa função roda no SERVIDOR (nunca no navegador do visitante), então é o
-// lugar seguro pra usar o token da Travelpayouts. O token nunca aparece no
-// código do site nem no repositório — ele vem de uma variável de ambiente
-// chamada TRAVELPAYOUTS_TOKEN, configurada direto no painel do Vercel.
-//
-// O front-end (index.html) chama esta função em /api/deals?origin=GRU&destination=LIS
-// e recebe de volta uma lista já pronta no formato que os cards/painel esperam.
 // =============================================================================
 
-// Pequeno dicionário pra transformar código IATA em nome de cidade legível.
-// Se o código não estiver aqui, mostramos o próprio código IATA.
 const AIRPORT_NAMES = {
-  GRU: "São Paulo", CGH: "São Paulo", GIG: "Rio de Janeiro", SDU: "Rio de Janeiro",
-  BSB: "Brasília", CNF: "Belo Horizonte", POA: "Porto Alegre", CWB: "Curitiba",
-  REC: "Recife", SSA: "Salvador", FOR: "Fortaleza", FLN: "Florianópolis",
-  MCZ: "Maceió", BEL: "Belém", MAO: "Manaus", VCP: "Campinas",
-  LIS: "Lisboa", OPO: "Porto", MIA: "Miami", MCO: "Orlando", JFK: "Nova York",
-  EZE: "Buenos Aires", SCL: "Santiago", LIM: "Lima", BOG: "Bogotá",
-  MAD: "Madri", CDG: "Paris", LHR: "Londres", FCO: "Roma",
+  // Brasil
+  GRU: "São Paulo", CGH: "São Paulo", VCP: "Campinas",
+  GIG: "Rio de Janeiro", SDU: "Rio de Janeiro",
+  BSB: "Brasília",
+  CNF: "Belo Horizonte", PLU: "Belo Horizonte",
+  POA: "Porto Alegre",
+  CWB: "Curitiba",
+  REC: "Recife",
+  SSA: "Salvador",
+  FOR: "Fortaleza",
+  FLN: "Florianópolis",
+  MCZ: "Maceió",
+  BEL: "Belém",
+  MAO: "Manaus",
+  NAT: "Natal",
+  SLZ: "São Luís",
+  THE: "Teresina",
+  AJU: "Aracaju",
+  JPA: "João Pessoa",
+  PMW: "Palmas",
+  CGB: "Cuiabá",
+  CGR: "Campo Grande",
+  PVH: "Porto Velho",
+  BVB: "Boa Vista",
+  MCP: "Macapá",
+  RBR: "Rio Branco",
+  IGU: "Foz do Iguaçu",
+  JOI: "Joinville",
+  NVT: "Navegantes",
+  LDB: "Londrina",
+  MGF: "Maringá",
+  UDI: "Uberlândia",
+  VIX: "Vitória",
+  IOS: "Ilhéus",
+  PPB: "Presidente Prudente",
+  RAO: "Ribeirão Preto",
+  // Portugal
+  LIS: "Lisboa", OPO: "Porto",
+  // EUA
+  MIA: "Miami", MCO: "Orlando", JFK: "Nova York",
+  EWR: "Nova York", LAX: "Los Angeles", ORD: "Chicago",
+  // América do Sul
+  EZE: "Buenos Aires", AEP: "Buenos Aires",
+  SCL: "Santiago", LIM: "Lima", BOG: "Bogotá",
+  UIO: "Quito", GYE: "Guayaquil", MVD: "Montevidéu",
+  ASU: "Assunção", CCS: "Caracas",
+  // Europa
+  MAD: "Madri", BCN: "Barcelona",
+  CDG: "Paris", ORY: "Paris",
+  LHR: "Londres", LGW: "Londres",
+  FCO: "Roma", MXP: "Milão",
+  AMS: "Amsterdã", FRA: "Frankfurt",
+  // Outros
+  DXB: "Dubai", CUN: "Cancún",
+  NRT: "Tóquio", GRU: "São Paulo",
 };
 
-// Aeroportos brasileiros conhecidos, usado só pra rotular "nacional" x "internacional".
 const BR_AIRPORTS = new Set([
-  "GRU","CGH","GIG","SDU","BSB","CNF","POA","CWB","REC","SSA","FOR","FLN","MCZ","BEL","MAO","VCP"
+  "GRU","CGH","VCP","GIG","SDU","BSB","CNF","PLU","POA","CWB",
+  "REC","SSA","FOR","FLN","MCZ","BEL","MAO","NAT","SLZ","THE",
+  "AJU","JPA","PMW","CGB","CGR","PVH","BVB","MCP","RBR","IGU",
+  "JOI","NVT","LDB","MGF","UDI","VIX","IOS","PPB","RAO"
 ]);
 
 function cityName(code) {
   return AIRPORT_NAMES[code] || code;
 }
 
-// ✅ CORREÇÃO: trocado "export default" por "module.exports" (CommonJS)
+// ✅ CommonJS — compatível com Vercel sem package.json extra
 module.exports = async function handler(req, res) {
   const token = process.env.TRAVELPAYOUTS_TOKEN;
 
@@ -75,8 +115,6 @@ module.exports = async function handler(req, res) {
       return;
     }
 
-    // Usamos a média dos preços retornados como referência de "preço normal"
-    // da rota, e marcamos como oferta tudo que está abaixo dessa média.
     const avg = rows.reduce((sum, r) => sum + r.price, 0) / rows.length;
 
     const data = rows
@@ -90,7 +128,7 @@ module.exports = async function handler(req, res) {
         avgPrice: Math.round(avg),
         tag: BR_AIRPORTS.has(r.origin) && BR_AIRPORTS.has(r.destination) ? "nacional" : "internacional",
       }))
-      .filter(d => d.price < d.avgPrice) // só o que está de fato abaixo da média
+      .filter(d => d.price < d.avgPrice)
       .sort((a, b) => a.price - b.price);
 
     res.status(200).json({ success: true, data });
