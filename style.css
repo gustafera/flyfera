@@ -1,5 +1,5 @@
 /* =============================================================================
-   flyfera — style.css (Design System & Seller Cards)
+   flyfera — style.css (Design System & Direct Airline Checkout)
    ============================================================================= */
 
 /* ── Design tokens ────────────────────────────────────────────────────────── */
@@ -1180,15 +1180,22 @@ button, input, select {
 }
 
 .seller-icon {
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 1.1rem;
+  font-weight: 700;
   background: rgba(255, 255, 255, 0.08);
 }
+
+.seller-icon.latam { background: #E60026; color: #fff; }
+.seller-icon.azul  { background: #0032A0; color: #fff; }
+.seller-icon.gol   { background: #FF6600; color: #fff; }
+.seller-icon.kiwi  { background: rgba(0, 230, 168, 0.15); color: var(--signal); }
+.seller-icon.trip  { background: rgba(38, 128, 235, 0.15); color: #2680eb; }
 
 .seller-name {
   font-weight: 700;
