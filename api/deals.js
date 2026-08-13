@@ -1,10 +1,10 @@
 // =============================================================================
-// /api/deals.js — Vercel Serverless Function (Foco Brasil & Reais R$)
+// /api/deals.js — Vercel Serverless Function (Busca por Data Precisa & Multi-API)
 // -----------------------------------------------------------------------------
-// 1. Suporte preciso a 'Só Ida' (one_way=true) e 'Ida e Volta' (one_way=false)
-// 2. Priorização da data solicitada pelo usuário (ex: 27/08)
-// 3. Links com moeda BRL e idioma pt-BR
-// 4. Mapeamento de companhias aéreas brasileiras (LATAM, GOL, Azul, Voepass)
+// 1. Consulta /v1/prices/cheap + /v2/prices/month-matrix + /v2/prices/latest
+// 2. Filtro estrito: se o usuário pediu 25/08, traz apenas voos em ±3 dias (nunca meses depois)
+// 3. Suporte a Só Ida (one_way=true) e Ida e Volta (one_way=false)
+// 4. Média histórica e identificação de promoções reais
 // =============================================================================
 
 const AIRPORT_NAMES = {
@@ -83,7 +83,6 @@ function getDealTier(pct) {
   return null;
 }
 
-// Gera link para o Aviasales forçando moeda BRL e idioma pt
 function buildAviasalesLink(origin, destination, departDate, returnDate, marker) {
   const base = "https://www.aviasales.com";
   const params = new URLSearchParams();
@@ -103,7 +102,7 @@ function buildAviasalesLink(origin, destination, departDate, returnDate, marker)
       const mRet = pRet[1] || "01";
       segment += `${dRet}${mRet}`;
     }
-    segment += "1"; // 1 passageiro
+    segment += "1";
 
     return `${base}/search/${segment}?${params.toString()}`;
   }
@@ -136,7 +135,7 @@ async function fetchHistorical(origin, destination, isOneWay, token) {
     try {
       const res = await fetch(
         `https://api.travelpayouts.com/v1/prices/cheap?${qs}`,
-        { headers: { "X-Access-Token": token }, signal: AbortSignal.timeout(4500) }
+        { headers: { "X-Access-Token": token }, signal: AbortSignal.timeout(4000) }
       );
       if (!res.ok) return { weight: 4 - back, prices: [] };
       const json   = await res.json();
@@ -164,7 +163,7 @@ async function fetchHistorical(origin, destination, isOneWay, token) {
 }
 
 export default async function handler(req, res) {
-  res.setHeader("Cache-Control", "s-maxage=180, stale-while-revalidate=60");
+  res.setHeader("Cache-Control", "s-maxage=120, stale-while-revalidate=60");
 
   const token  = process.env.TRAVELPAYOUTS_TOKEN;
   const marker = process.env.TRAVELPAYOUTS_MARKER || "";
@@ -179,81 +178,155 @@ export default async function handler(req, res) {
     : null;
   const reqDepartDate = req.query.depart_date || null;
   const reqReturnDate = req.query.return_date || null;
-  const isOneWay = req.query.one_way !== "false"; // padrão Só Ida se não especificado
+  const isOneWay = req.query.one_way !== "false";
 
   try {
-    const qs = new URLSearchParams({
-      currency: "brl",
-      origin,
-      sorting: "price",
-      limit: "40",
-      one_way: isOneWay ? "true" : "false",
-    });
-    if (destination) qs.set("destination", destination);
-    if (reqDepartDate) {
-      qs.set("beginning_of_period", reqDepartDate);
+    const rawRows = [];
+
+    // ── 1. Se o usuário escolheu data, busca voos específicos para o mês/data ──
+    if (reqDepartDate && destination) {
+      const monthStr = reqDepartDate.slice(0, 7); // ex: "2026-08"
+
+      // Consulta 1: /v1/prices/cheap com a data/mês específico
+      const p1 = (async () => {
+        try {
+          const qs = new URLSearchParams({
+            origin, destination, depart_date: monthStr, currency: "brl"
+          });
+          const r = await fetch(`https://api.travelpayouts.com/v1/prices/cheap?${qs}`, {
+            headers: { "X-Access-Token": token },
+            signal: AbortSignal.timeout(5000)
+          });
+          if (!r.ok) return;
+          const j = await r.json();
+          const bucket = j.data?.[destination] || {};
+          Object.values(bucket).forEach(t => {
+            const dDate = t.departure_at ? t.departure_at.split("T")[0] : reqDepartDate;
+            const price = Number(t.price ?? t.value ?? 0);
+            if (price > 0) {
+              rawRows.push({
+                origin, destination, depart_date: dDate, price,
+                transfers: 0, airline: t.airline || null
+              });
+            }
+          });
+        } catch (_) {}
+      })();
+
+      // Consulta 2: /v2/prices/month-matrix para o mês exato
+      const p2 = (async () => {
+        try {
+          const qs = new URLSearchParams({
+            currency: "brl", origin, destination, month: `${monthStr}-01`, show_to_affiliates: "true"
+          });
+          const r = await fetch(`https://api.travelpayouts.com/v2/prices/month-matrix?${qs}`, {
+            headers: { "X-Access-Token": token },
+            signal: AbortSignal.timeout(5000)
+          });
+          if (!r.ok) return;
+          const j = await r.json();
+          (j.data || []).forEach(t => {
+            const price = Number(t.value ?? t.price ?? 0);
+            if (price > 0 && t.depart_date) {
+              rawRows.push({
+                origin: t.origin || origin,
+                destination: t.destination || destination,
+                depart_date: t.depart_date,
+                price,
+                transfers: Number(t.number_of_changes ?? 0),
+                airline: t.airline || null
+              });
+            }
+          });
+        } catch (_) {}
+      })();
+
+      await Promise.allSettled([p1, p2]);
     }
 
-    const curRes = await fetch(
-      `https://api.travelpayouts.com/v2/prices/latest?${qs}`,
-      { headers: { "X-Access-Token": token }, signal: AbortSignal.timeout(8000) }
-    );
+    // ── 2. Consulta geral /v2/prices/latest ──────────────────────────────────
+    try {
+      const qs = new URLSearchParams({
+        currency: "brl",
+        origin,
+        sorting: "price",
+        limit: "40",
+        one_way: isOneWay ? "true" : "false",
+      });
+      if (destination) qs.set("destination", destination);
+      if (reqDepartDate) qs.set("beginning_of_period", reqDepartDate);
 
-    if (!curRes.ok) {
-      return res.status(curRes.status).json({ success: false, error: `API Travelpayouts retornou ${curRes.status}` });
-    }
+      const r = await fetch(`https://api.travelpayouts.com/v2/prices/latest?${qs}`, {
+        headers: { "X-Access-Token": token },
+        signal: AbortSignal.timeout(6000)
+      });
+      if (r.ok) {
+        const j = await r.json();
+        (j.data || []).forEach(t => {
+          const price = Number(t.value ?? t.price ?? 0);
+          if (price > 0 && t.origin && t.destination) {
+            rawRows.push({
+              origin: t.origin,
+              destination: t.destination,
+              depart_date: t.depart_date || "",
+              price,
+              transfers: Number(t.number_of_changes ?? t.transfers ?? 0),
+              airline: t.airline || null
+            });
+          }
+        });
+      }
+    } catch (_) {}
 
-    const rawData = (await curRes.json()).data;
-    if (!Array.isArray(rawData) || !rawData.length) {
-      return res.status(200).json({
-        success: true,
-        data: [],
-        normalFallback: [],
-        meta: { total: 0, origin, destination: destination || "ANY", updatedAt: new Date().toISOString() }
+    // ── 3. Normalização e Deduplicação ──────────────────────────────────────
+    const seenMap = new Map();
+    let rows = [];
+
+    for (const r of rawRows) {
+      const key = `${r.origin}|${r.destination}|${r.depart_date}|${r.price}`;
+      if (seenMap.has(key)) continue;
+      seenMap.set(key, true);
+
+      let daysDiff = 0;
+      let isExactDate = false;
+      if (reqDepartDate && r.depart_date) {
+        const reqD = new Date(reqDepartDate + "T12:00:00");
+        const curD = new Date(r.depart_date + "T12:00:00");
+        daysDiff = Math.round(Math.abs((curD - reqD) / (1000 * 60 * 60 * 24)));
+        isExactDate = (daysDiff === 0);
+      }
+
+      const isNational = BR_AIRPORTS.has(r.origin) && BR_AIRPORTS.has(r.destination);
+
+      rows.push({
+        origin: r.origin,
+        destination: r.destination,
+        depart_date: r.depart_date,
+        price: r.price,
+        transfers: r.transfers,
+        airline: r.airline,
+        airlineName: getAirlineName(r.airline, isNational),
+        daysDiff,
+        isExactDate,
+        isNational
       });
     }
 
-    // Normalizar itens
-    let rows = rawData
-      .map(r => {
-        const price = Number(r.value ?? r.price ?? 0);
-        const transfers = Number(r.number_of_changes ?? r.transfers ?? 0);
-        const departDate = r.depart_date || "";
-
-        let daysDiff = 0;
-        let isExactDate = false;
-        if (reqDepartDate && departDate) {
-          const reqD = new Date(reqDepartDate + "T12:00:00");
-          const curD = new Date(departDate + "T12:00:00");
-          daysDiff = Math.round(Math.abs((curD - reqD) / (1000 * 60 * 60 * 24)));
-          isExactDate = (daysDiff === 0);
-        }
-
-        const isNational = BR_AIRPORTS.has(r.origin) && BR_AIRPORTS.has(r.destination);
-
-        return {
-          origin: r.origin,
-          destination: r.destination,
-          depart_date: departDate,
-          return_date: r.return_date || null,
-          price,
-          transfers,
-          airline: r.airline || null,
-          airlineName: getAirlineName(r.airline, isNational),
-          daysDiff,
-          isExactDate,
-          isNational,
-        };
-      })
-      .filter(r => r.price > 0 && r.origin && r.destination);
-
-    // Se o usuário selecionou uma data, priorizar as datas mais próximas
+    // ── 4. Filtro Rígido de Data ────────────────────────────────────────────
+    // Se o usuário pediu 25/08, traz APENAS voos num raio máximo de ±3 dias (ou ±7 dias no mesmo mês).
+    // NUNCA exibe voos de meses seguintes fingindo que são da data pedida.
     if (reqDepartDate) {
-      const nearRows = rows.filter(r => r.daysDiff <= 30);
-      if (nearRows.length) {
-        rows = nearRows.sort((a, b) => a.daysDiff - b.daysDiff || a.price - b.price);
+      const strictNear = rows.filter(r => r.daysDiff <= 3);
+      if (strictNear.length) {
+        rows = strictNear.sort((a, b) => a.daysDiff - b.daysDiff || a.price - b.price);
       } else {
-        rows = rows.sort((a, b) => a.daysDiff - b.daysDiff || a.price - b.price);
+        const weekNear = rows.filter(r => r.daysDiff <= 7);
+        if (weekNear.length) {
+          rows = weekNear.sort((a, b) => a.daysDiff - b.daysDiff || a.price - b.price);
+        } else {
+          // Se não há dados para a data no cache, não engana o usuário com setembro
+          rows = [];
+        }
       }
     }
 
@@ -262,17 +335,24 @@ export default async function handler(req, res) {
         success: true,
         data: [],
         normalFallback: [],
-        meta: { total: 0, origin, destination: destination || "ANY", updatedAt: new Date().toISOString() }
+        meta: {
+          total: 0,
+          origin,
+          destination: destination || "ANY",
+          depart_date: reqDepartDate,
+          one_way: isOneWay,
+          updatedAt: new Date().toISOString()
+        }
       });
     }
 
-    // Histórico de rotas
-    const seen = new Set();
+    // ── 5. Histórico e Classificação de Desconto ────────────────────────────
+    const seenRoutes = new Set();
     const routes = [];
     for (const r of rows) {
       const k = `${r.origin}|${r.destination}`;
-      if (!seen.has(k) && routes.length < 12) {
-        seen.add(k);
+      if (!seenRoutes.has(k) && routes.length < 8) {
+        seenRoutes.add(k);
         routes.push({ o: r.origin, d: r.destination });
       }
     }
@@ -288,7 +368,6 @@ export default async function handler(req, res) {
     const medianPrice  = sortedPrices[Math.floor(sortedPrices.length / 2)] || rows[0].price;
     const fallbackBase = Math.round(medianPrice * 1.25);
 
-    // Mapear ofertas
     const deals = rows
       .map(r => {
         const key = `${r.origin}|${r.destination}`;
@@ -300,7 +379,6 @@ export default async function handler(req, res) {
         const tier = getDealTier(pct);
         if (!tier) return null;
 
-        // O link de compra deve usar a data solicitada pelo usuário se houver, ou a data do voo
         const effectiveDate = reqDepartDate || r.depart_date;
 
         return {
@@ -333,7 +411,7 @@ export default async function handler(req, res) {
       deals.sort((a, b) => b.discountPct - a.discountPct);
     }
 
-    // Fallback regular
+    // Fallback com preços normais se não houver promoção histórica
     const normalFallback = deals.length ? [] : rows
       .slice(0, 6)
       .map(r => {
