@@ -279,6 +279,71 @@ footer .flinks a{color:var(--ink-muted);text-decoration:none;}
 footer .flinks a:hover{color:var(--ink);}
 
 @media(prefers-reduced-motion:reduce){*{animation-duration:.01ms !important;transition-duration:.01ms !important;}}
+
+/* ── Normal price card ─────────────────────────────────────────────────── */
+.deal-card.tier-normal{border-color:rgba(255,255,255,.08);}
+.deal-card.tier-normal:hover{border-color:rgba(255,255,255,.18);}
+.tier-badge.normal{background:rgba(255,255,255,.06);color:var(--ink-dim);}
+.normal-notice{font-size:.75rem;color:var(--ink-dim);background:rgba(255,178,62,.07);border:1px solid rgba(255,178,62,.15);border-radius:8px;padding:8px 10px;margin-bottom:8px;line-height:1.5;}
+
+/* ── Normal section header ─────────────────────────────────────────────── */
+.normal-section-header{
+  grid-column:1/-1;display:flex;align-items:center;gap:12px;
+  padding:10px 0 4px;margin-top:8px;
+}
+.normal-section-header .label{font-size:.8rem;color:var(--ink-dim);font-weight:600;white-space:nowrap;}
+.normal-section-header .line{flex:1;height:1px;background:var(--line);}
+
+/* ── Modal ─────────────────────────────────────────────────────────────── */
+.modal-overlay{
+  position:fixed;inset:0;z-index:200;background:rgba(5,8,20,.82);
+  backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;
+  padding:20px;opacity:0;pointer-events:none;transition:opacity .2s ease;
+}
+.modal-overlay.open{opacity:1;pointer-events:auto;}
+.modal{
+  background:var(--night-2);border:1px solid var(--line);
+  border-radius:20px;width:100%;max-width:500px;overflow:hidden;
+  transform:translateY(16px) scale(.97);transition:transform .25s ease;
+}
+.modal-overlay.open .modal{transform:translateY(0) scale(1);}
+.modal-top{display:flex;justify-content:space-between;align-items:center;padding:18px 20px 0;}
+.modal-eyebrow{font-family:var(--mono);font-size:.7rem;color:var(--ink-dim);letter-spacing:.1em;text-transform:uppercase;}
+.modal-close{background:none;border:1px solid var(--line);color:var(--ink-dim);width:28px;height:28px;border-radius:8px;cursor:pointer;font-size:.9rem;display:flex;align-items:center;justify-content:center;transition:all .15s;}
+.modal-close:hover{color:var(--ink);border-color:rgba(255,255,255,.3);}
+.modal-body{padding:20px;}
+.modal-tier-badge{
+  display:inline-flex;align-items:center;gap:8px;padding:7px 14px;
+  border-radius:999px;font-size:.8rem;font-weight:700;margin-bottom:14px;
+}
+.modal-tier-badge.hot  {background:var(--hot-dim);  color:var(--hot);}
+.modal-tier-badge.good {background:var(--signal-dim);color:var(--signal);}
+.modal-tier-badge.below{background:var(--amber-dim); color:var(--amber);}
+.modal-tier-badge.normal{background:rgba(255,255,255,.06);color:var(--ink-muted);}
+.modal-route{font-family:var(--display);font-size:1.65rem;font-weight:700;margin-bottom:2px;line-height:1.1;}
+.modal-codes{font-family:var(--mono);font-size:.8rem;color:var(--ink-dim);margin-bottom:18px;}
+.modal-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;}
+.modal-cell{background:rgba(255,255,255,.04);border-radius:10px;padding:11px;}
+.modal-cell .lbl{font-size:.66rem;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-dim);margin-bottom:3px;}
+.modal-cell .val{font-size:.9rem;font-weight:600;color:var(--ink);}
+.modal-price-row{
+  display:flex;justify-content:space-between;align-items:center;
+  background:rgba(255,255,255,.04);border-radius:12px;padding:14px 16px;margin-bottom:14px;
+}
+.modal-price-row .hist{}
+.modal-price-row .hist .lbl{font-size:.66rem;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-dim);margin-bottom:2px;}
+.modal-price-row .hist .was{text-decoration:line-through;font-family:var(--mono);font-size:.92rem;color:var(--ink-dim);}
+.modal-price-row .now{text-align:right;}
+.modal-price-row .now .lbl{font-size:.66rem;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-dim);margin-bottom:2px;}
+.modal-price-row .now .amt{font-family:var(--mono);font-size:2rem;font-weight:700;color:var(--ink);line-height:1;}
+.modal-note{font-size:.74rem;color:var(--ink-dim);background:rgba(255,255,255,.04);border-radius:8px;padding:10px 12px;margin-bottom:14px;line-height:1.55;}
+.btn-buy{
+  display:block;width:100%;background:var(--amber);color:#14101E;border:none;
+  border-radius:12px;padding:15px;font-weight:700;font-size:1rem;cursor:pointer;
+  text-decoration:none;text-align:center;transition:transform .15s,box-shadow .15s;
+  font-family:var(--body);
+}
+.btn-buy:hover{transform:translateY(-1px);box-shadow:0 10px 28px rgba(255,178,62,.3);}
 </style>
 </head>
 <body>
@@ -719,6 +784,7 @@ function showSkeletons() {
 }
 
 // ── Fetch deals ───────────────────────────────────────────────────────────
+// Retorna { deals: [], normalFallback: [] }
 async function fetchDeals(origin, destination) {
   const qs = new URLSearchParams();
   if (origin)      qs.set("origin",      origin);
@@ -727,13 +793,16 @@ async function fetchDeals(origin, destination) {
     const res  = await fetch(`/api/deals?${qs}`);
     if (!res.ok) throw new Error("api error");
     const json = await res.json();
-    if (json.success && json.data?.length) {
+    if (json.success) {
       updatedAt = json.meta?.updatedAt || new Date().toISOString();
-      return json.data;
+      return {
+        deals:          json.data          || [],
+        normalFallback: json.normalFallback || [],
+      };
     }
-    return mockFallback(origin, destination);
+    return { deals: mockFallback(origin, destination), normalFallback: [] };
   } catch {
-    return mockFallback(origin, destination);
+    return { deals: mockFallback(origin, destination), normalFallback: [] };
   }
 }
 
@@ -755,72 +824,94 @@ function mockFallback(origin, destination) {
 }
 
 // ── Render: deal cards ────────────────────────────────────────────────────
-function renderDeals(deals) {
+// dealList  = ofertas em promoção
+// normalList = voos mais baratos sem promoção (fallback)
+function renderDeals(dealList, normalList = []) {
   const grid = document.getElementById("deal-grid");
   grid.innerHTML = "";
 
-  if (!deals.length) {
-    const origin      = document.getElementById("origin").value;
-    const destination = document.getElementById("destination").value;
-    const aviasalesUrl = (origin && destination && destination !== "ANY")
-      ? `https://www.aviasales.com/search/${origin}1${destination}1`
-      : "https://www.aviasales.com";
-    grid.innerHTML = `<div class="empty-state">
-      <strong>Nenhuma oferta abaixo do histórico agora</strong>
-      A rota <b>${origin}${destination && destination !== "ANY" ? " → " + destination : ""}</b> não tem passagens abaixo da média dos últimos 3 meses no momento.
-      <br><br>
-      Você ainda pode pesquisar preços disponíveis diretamente:
-      <br><br>
-      <a href="${aviasalesUrl}" target="_blank" rel="noopener noreferrer"
-         style="display:inline-block;margin-top:4px;padding:10px 20px;background:var(--amber-dim);color:var(--amber);border:1px solid rgba(255,178,62,.4);border-radius:8px;font-weight:600;font-size:.88rem;text-decoration:none;">
-        Ver todos os voos disponíveis →
-      </a>
-    </div>`;
-    return;
-  }
-
-  deals.forEach(d => {
-    const card = document.createElement("div");
-    card.className = `deal-card tier-${d.tier.key}`;
+  function buildCard(d) {
+    const isNormal      = d.isNormalPrice;
+    const tierKey       = isNormal ? "normal" : (d.tier?.key || "below");
+    const tierLabel     = isNormal ? "📊 Preço no padrão" : `${d.tier.emoji} ${d.tier.label}`;
+    const tierPct       = isNormal ? "" : `<span class="pct">-${d.discountPct}%</span>`;
     const transferLabel = d.transfers === 0 ? "Direto"
       : d.transfers === 1 ? "1 escala" : `${d.transfers} escalas`;
-    const linkTarget = d.link && d.link !== "#" ? 'target="_blank" rel="noopener noreferrer"' : 'onclick="return false;"';
+    const histSection   = d.historicalAvg
+      ? `<div class="deal-historical">
+           <div><div class="label">${isNormal ? "Média 3 meses" : "Média 3 meses"}</div>
+           <div class="was">${fmtBRL(d.historicalAvg)}</div></div>
+           <div style="color:var(--ink-dim);font-size:.7rem;">${isNormal ? "preço normal" : "vs. hoje"}</div>
+         </div>`
+      : "";
+    const normalNotice  = isNormal
+      ? `<div class="normal-notice">Este voo está no preço histórico normal. Não é uma promoção, mas é uma das opções mais baratas disponíveis agora.</div>`
+      : "";
+
+    const card = document.createElement("div");
+    card.className = `deal-card tier-${tierKey}`;
     card.innerHTML = `
-      <div class="tier-badge ${d.tier.key}">
-        ${d.tier.emoji} ${d.tier.label}
-        <span class="pct">-${d.discountPct}%</span>
-      </div>
+      <div class="tier-badge ${tierKey}">${tierLabel}${tierPct}</div>
       <div class="deal-body">
-        <div class="deal-top">
-          <div class="deal-route">
-            ${d.from} → ${d.to}
-            <span class="code">${d.fromCode} · ${d.toCode}</span>
-          </div>
+        <div class="deal-route">
+          ${d.from} → ${d.to}
+          <span class="code">${d.fromCode} · ${d.toCode}</span>
         </div>
         <div class="deal-meta">
-          <span>📅 ${d.dateFormatted || d.date}</span>
+          <span>📅 ${d.dateFormatted || d.date || "Data flexível"}</span>
           <span class="dot">·</span>
           <span>${d.tag === "nacional" ? "Voo nacional" : "Voo internacional"}</span>
           <span class="dot">·</span>
           <span>${transferLabel}</span>
         </div>
-        <div class="deal-historical">
-          <div>
-            <div class="label">Média 3 meses</div>
-            <div class="was">${fmtBRL(d.historicalAvg)}</div>
-          </div>
-          <div style="color:var(--ink-dim);font-size:.7rem;">vs. hoje</div>
-        </div>
+        ${normalNotice}
+        ${histSection}
         <div class="deal-bottom">
           <div class="deal-price">
             <div class="label">Preço hoje</div>
             <div class="value">${fmtBRL(d.price)}</div>
           </div>
-          <a class="deal-link" href="${d.link}" ${linkTarget}>Ver oferta →</a>
+          <button class="deal-link" type="button">Ver detalhes</button>
         </div>
       </div>`;
-    grid.appendChild(card);
-  });
+
+    // Abre o modal ao clicar — nunca redireciona direto
+    card.querySelector(".deal-link").addEventListener("click", () => openModal(d));
+    return card;
+  }
+
+  if (!dealList.length && !normalList.length) {
+    grid.innerHTML = `<div class="empty-state">
+      <strong>Nenhum voo encontrado para esta rota</strong>
+      Não foi possível obter preços para esta combinação agora. Tente outra origem ou destino.
+    </div>`;
+    return;
+  }
+
+  // Renderiza deals em promoção
+  dealList.forEach(d => grid.appendChild(buildCard(d)));
+
+  // Se não há promoções, mostra o banner de aviso + voos no preço normal
+  if (!dealList.length && normalList.length) {
+    const origin      = document.getElementById("origin").value;
+    const destination = document.getElementById("destination").value;
+    const banner = document.createElement("div");
+    banner.className = "empty-state";
+    banner.style.marginBottom = "20px";
+    banner.innerHTML = `
+      <strong>Nenhuma passagem em promoção agora</strong>
+      A rota <b>${origin}${destination && destination !== "ANY" ? " → " + destination : ""}</b>
+      não tem voos abaixo da média dos últimos 3 meses no momento.
+      <br>Mas encontramos as <b>opções mais baratas disponíveis</b> para você não ficar sem saída:`;
+    grid.insertBefore(banner, grid.firstChild);
+
+    const sep = document.createElement("div");
+    sep.className = "normal-section-header";
+    sep.innerHTML = `<div class="line"></div><div class="label">Voos disponíveis · preço no padrão</div><div class="line"></div>`;
+    grid.appendChild(sep);
+
+    normalList.forEach(d => grid.appendChild(buildCard(d)));
+  }
 }
 
 // ── Render: split-flap board ──────────────────────────────────────────────
@@ -928,9 +1019,10 @@ document.getElementById("search-form").addEventListener("submit", async e => {
   const origin      = document.getElementById("origin").value;
   const destination = document.getElementById("destination").value;
 
-  allDeals = await fetchDeals(origin, destination);
+  const { deals, normalFallback } = await fetchDeals(origin, destination);
+  allDeals = deals;
   renderBoard(allDeals);
-  renderDeals(allDeals);
+  renderDeals(allDeals, normalFallback);
   updateStats(allDeals);
 
   btn.classList.remove("loading");
@@ -961,15 +1053,93 @@ function resetAutoRefresh() {
   }, 5 * 60 * 1000);
 }
 
+// ── Modal ─────────────────────────────────────────────────────────────────
+function openModal(deal) {
+  const isNormal      = deal.isNormalPrice;
+  const tierKey       = isNormal ? "normal" : (deal.tier?.key || "below");
+  const tierLabel     = isNormal ? "📊 Preço no padrão" : `${deal.tier.emoji} ${deal.tier.label} · -${deal.discountPct}%`;
+  const transferLabel = deal.transfers === 0 ? "Voo direto"
+    : deal.transfers === 1 ? "1 escala" : `${deal.transfers} escalas`;
+  const tagLabel      = deal.tag === "nacional" ? "Nacional" : "Internacional";
+
+  document.getElementById("modal-body").innerHTML = `
+    <div class="modal-tier-badge ${tierKey}">${tierLabel}</div>
+    <div class="modal-route">${deal.from} → ${deal.to}</div>
+    <div class="modal-codes">${deal.fromCode} &nbsp;·&nbsp; ${deal.toCode}</div>
+    <div class="modal-grid">
+      <div class="modal-cell">
+        <div class="lbl">Data de ida</div>
+        <div class="val">${deal.dateFormatted || deal.date || "Flexível"}</div>
+      </div>
+      <div class="modal-cell">
+        <div class="lbl">Tipo de voo</div>
+        <div class="val">${tagLabel} · ${transferLabel}</div>
+      </div>
+    </div>
+    <div class="modal-price-row">
+      <div class="hist">
+        <div class="lbl">${deal.historicalAvg ? "Média 3 meses" : "Referência"}</div>
+        ${deal.historicalAvg
+          ? `<div class="was">${fmtBRL(deal.historicalAvg)}</div>`
+          : `<div style="font-size:.82rem;color:var(--ink-dim);">–</div>`}
+      </div>
+      <div class="now">
+        <div class="lbl">Preço hoje</div>
+        <div class="amt">${fmtBRL(deal.price)}</div>
+      </div>
+    </div>
+    ${isNormal
+      ? `<div class="modal-note">📊 <strong>Este voo está no preço normal para esta rota.</strong><br>Nenhuma promoção foi identificada, mas é uma das opções mais baratas disponíveis. O preço pode mudar antes da compra.</div>`
+      : `<div class="modal-note">⚠️ O flyfera mostra preços de referência obtidos via API. Confirme o valor final antes de concluir — preços podem variar até a confirmação da reserva.</div>`
+    }
+    <a class="btn-buy" href="${deal.link}" target="_blank" rel="noopener noreferrer">
+      Comprar esta passagem &rarr;
+    </a>
+    <p style="text-align:center;font-size:.7rem;color:var(--ink-dim);margin-top:10px;">
+      Você será redirecionado para Aviasales (parceiro Travelpayouts) para finalizar a compra.
+    </p>`;
+
+  const ov = document.getElementById("modal-overlay");
+  ov.classList.add("open");
+  ov.setAttribute("aria-hidden", "false");
+  document.body.style.overflow = "hidden";
+}
+
+function closeModal() {
+  const ov = document.getElementById("modal-overlay");
+  ov.classList.remove("open");
+  ov.setAttribute("aria-hidden", "true");
+  document.body.style.overflow = "";
+}
+
+document.getElementById("modal-close").addEventListener("click", closeModal);
+document.getElementById("modal-overlay").addEventListener("click", e => {
+  if (e.target === e.currentTarget) closeModal();
+});
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
+
 // ── Init ──────────────────────────────────────────────────────────────────
 (async function init() {
   showSkeletons();
-  allDeals = await fetchDeals();
+  const { deals, normalFallback } = await fetchDeals();
+  allDeals = deals;
   renderBoard(allDeals);
-  renderDeals(allDeals);
+  renderDeals(allDeals, normalFallback);
   updateStats(allDeals);
   resetAutoRefresh();
 })();
 </script>
+
+<!-- ── Modal HTML ──────────────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="modal-overlay" aria-modal="true" role="dialog" aria-hidden="true">
+  <div class="modal" id="modal-box">
+    <div class="modal-top">
+      <span class="modal-eyebrow">Detalhes da oferta</span>
+      <button class="modal-close" id="modal-close" aria-label="Fechar modal">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
 </body>
 </html>
