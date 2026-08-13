@@ -69,11 +69,20 @@ function getDealTier(pct) {
   return null;
 }
 
-function affiliateLink(path, marker) {
+function affiliateLink(path, origin, destination, date, marker) {
   const base = "https://www.aviasales.com";
-  if (!path) return base;
-  const url = `${base}${path}`;
-  return marker ? `${url}?marker=${marker}` : url;
+  // If the API returned a ready-made search path (e.g. /search/GRU1209LIS1), use it
+  if (path) {
+    const url = `${base}${path}`;
+    return marker ? `${url}?marker=${marker}` : url;
+  }
+  // Fallback: build a search URL from route info
+  if (origin && destination && date) {
+    const [, m, d] = date.split("-"); // "2026-10-12" → d="12", m="10"
+    const search = `${origin}${d}${m}${destination}1`;
+    return marker ? `${base}/search/${search}?marker=${marker}` : `${base}/search/${search}`;
+  }
+  return marker ? `${base}?marker=${marker}` : base;
 }
 
 function fmtDate(str) {
@@ -176,13 +185,23 @@ export default async function handler(req, res) {
     );
 
     // ── Passo 4: enriquecer, filtrar e ordenar ────────────────────────────
+    // Fallback baseline: mediana dos preços atuais × 1.25
+    // Usado quando o endpoint histórico não retorna dados para uma rota específica.
+    const sortedPrices = [...rows].map(r => r.price).sort((a, b) => a - b);
+    const medianPrice  = sortedPrices[Math.floor(sortedPrices.length / 2)];
+    const fallbackBase = Math.round(medianPrice * 1.25);
+
     const deals = rows
       .map(r => {
-        const hist = baseMap[`${r.origin}|${r.destination}`];
-        if (!hist || r.price >= hist) return null;             // sem histórico ou sem desconto real
+        const key  = `${r.origin}|${r.destination}`;
+        // Usa histórico real se disponível, senão usa fallback baseado nos preços atuais
+        const hist = baseMap[key] || fallbackBase;
+        const isEstimated = !baseMap[key]; // true = baseline estimado, não histórico real
+
+        if (r.price >= hist) return null;  // preço não está abaixo da baseline
         const pct  = Math.round(100 - (r.price / hist * 100));
         const tier = getDealTier(pct);
-        if (!tier) return null;                                // desconto < 5%
+        if (!tier) return null;            // desconto < 5%
         return {
           from:          cityName(r.origin),
           fromCode:      r.origin,
@@ -193,10 +212,11 @@ export default async function handler(req, res) {
           price:         r.price,
           historicalAvg: hist,
           discountPct:   pct,
+          isEstimated,
           tier,
           transfers:     r.transfers ?? 0,
           airline:       r.airline || null,
-          link:          affiliateLink(r.link, marker),
+          link:          affiliateLink(r.link, r.origin, r.destination, r.depart_date, marker),
           tag:           BR_AIRPORTS.has(r.origin) && BR_AIRPORTS.has(r.destination)
                            ? "nacional" : "internacional",
         };
