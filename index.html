@@ -599,47 +599,64 @@ footer .flinks a:hover{color:var(--ink);}
    ========================================================================= */
 
 // ── Mock data (formato idêntico ao retornado pela API) ────────────────────
+// Links gerados no formato Aviasales: ORIGEM + DIA + MÊS + DESTINO + ADULTOS
+function buildMockLink(fromCode, toCode, date) {
+  if (!date) return "https://www.aviasales.com";
+  const [, m, d] = date.split("-");
+  return `https://www.aviasales.com/search/${fromCode}${d}${m}${toCode}1`;
+}
+
 const MOCK_DEALS = [
   { from:"São Paulo",    fromCode:"GRU", to:"Lisboa",        toCode:"LIS",
     date:"2026-10-12", dateFormatted:"12 de out. de 2026",
-    price:2380, historicalAvg:3690, discountPct:35,
-    tier:{key:"hot",label:"Imperdível",emoji:"🔥"}, tag:"internacional", transfers:0, link:"#" },
+    price:2380, historicalAvg:3690, discountPct:35, isEstimated:false,
+    tier:{key:"hot",label:"Imperdível",emoji:"🔥"}, tag:"internacional", transfers:0,
+    link: buildMockLink("GRU","LIS","2026-10-12") },
   { from:"Recife",       fromCode:"REC", to:"Porto Alegre",  toCode:"POA",
     date:"2026-09-18", dateFormatted:"18 de set. de 2026",
-    price:410,  historicalAvg:640,  discountPct:36,
-    tier:{key:"hot",label:"Imperdível",emoji:"🔥"}, tag:"nacional",       transfers:0, link:"#" },
+    price:410,  historicalAvg:640,  discountPct:36, isEstimated:false,
+    tier:{key:"hot",label:"Imperdível",emoji:"🔥"}, tag:"nacional", transfers:0,
+    link: buildMockLink("REC","POA","2026-09-18") },
   { from:"Rio de Janeiro",fromCode:"GIG",to:"Miami",         toCode:"MIA",
     date:"2026-11-22", dateFormatted:"22 de nov. de 2026",
-    price:2150, historicalAvg:3200, discountPct:33,
-    tier:{key:"hot",label:"Imperdível",emoji:"🔥"}, tag:"internacional", transfers:0, link:"#" },
+    price:2150, historicalAvg:3200, discountPct:33, isEstimated:false,
+    tier:{key:"hot",label:"Imperdível",emoji:"🔥"}, tag:"internacional", transfers:0,
+    link: buildMockLink("GIG","MIA","2026-11-22") },
   { from:"Brasília",     fromCode:"BSB", to:"Curitiba",      toCode:"CWB",
     date:"2026-08-29", dateFormatted:"29 de ago. de 2026",
-    price:295,  historicalAvg:470,  discountPct:37,
-    tier:{key:"hot",label:"Imperdível",emoji:"🔥"}, tag:"nacional",       transfers:0, link:"#" },
+    price:295,  historicalAvg:470,  discountPct:37, isEstimated:false,
+    tier:{key:"hot",label:"Imperdível",emoji:"🔥"}, tag:"nacional", transfers:0,
+    link: buildMockLink("BSB","CWB","2026-08-29") },
   { from:"Belo Horizonte",fromCode:"CNF",to:"Lisboa",        toCode:"LIS",
     date:"2026-12-05", dateFormatted:"05 de dez. de 2026",
-    price:2590, historicalAvg:3480, discountPct:26,
-    tier:{key:"good",label:"Boa oferta",emoji:"✅"}, tag:"internacional", transfers:1, link:"#" },
+    price:2590, historicalAvg:3480, discountPct:26, isEstimated:false,
+    tier:{key:"good",label:"Boa oferta",emoji:"✅"}, tag:"internacional", transfers:1,
+    link: buildMockLink("CNF","LIS","2026-12-05") },
   { from:"Fortaleza",    fromCode:"FOR", to:"Lima",          toCode:"LIM",
     date:"2026-10-09", dateFormatted:"09 de out. de 2026",
-    price:1290, historicalAvg:1980, discountPct:35,
-    tier:{key:"hot",label:"Imperdível",emoji:"🔥"}, tag:"internacional", transfers:1, link:"#" },
+    price:1290, historicalAvg:1980, discountPct:35, isEstimated:false,
+    tier:{key:"hot",label:"Imperdível",emoji:"🔥"}, tag:"internacional", transfers:1,
+    link: buildMockLink("FOR","LIM","2026-10-09") },
   { from:"Salvador",     fromCode:"SSA", to:"Florianópolis", toCode:"FLN",
     date:"2026-09-14", dateFormatted:"14 de set. de 2026",
-    price:460,  historicalAvg:710,  discountPct:35,
-    tier:{key:"hot",label:"Imperdível",emoji:"🔥"}, tag:"nacional",       transfers:1, link:"#" },
+    price:460,  historicalAvg:710,  discountPct:35, isEstimated:false,
+    tier:{key:"hot",label:"Imperdível",emoji:"🔥"}, tag:"nacional", transfers:1,
+    link: buildMockLink("SSA","FLN","2026-09-14") },
   { from:"São Paulo",    fromCode:"GRU", to:"Buenos Aires",  toCode:"EZE",
     date:"2026-09-03", dateFormatted:"03 de set. de 2026",
-    price:890,  historicalAvg:1160, discountPct:23,
-    tier:{key:"good",label:"Boa oferta",emoji:"✅"}, tag:"internacional", transfers:1, link:"#" },
+    price:890,  historicalAvg:1160, discountPct:23, isEstimated:false,
+    tier:{key:"good",label:"Boa oferta",emoji:"✅"}, tag:"internacional", transfers:1,
+    link: buildMockLink("GRU","EZE","2026-09-03") },
   { from:"São Paulo",    fromCode:"GRU", to:"Maceió",        toCode:"MCZ",
     date:"2026-09-02", dateFormatted:"02 de set. de 2026",
-    price:320,  historicalAvg:400,  discountPct:20,
-    tier:{key:"good",label:"Boa oferta",emoji:"✅"}, tag:"nacional",       transfers:0, link:"#" },
+    price:320,  historicalAvg:400,  discountPct:20, isEstimated:false,
+    tier:{key:"good",label:"Boa oferta",emoji:"✅"}, tag:"nacional", transfers:0,
+    link: buildMockLink("GRU","MCZ","2026-09-02") },
   { from:"Porto Alegre", fromCode:"POA", to:"Madri",         toCode:"MAD",
     date:"2026-11-08", dateFormatted:"08 de nov. de 2026",
-    price:3100, historicalAvg:3400, discountPct:9,
-    tier:{key:"below",label:"Abaixo do normal",emoji:"📉"}, tag:"internacional", transfers:1, link:"#" },
+    price:3100, historicalAvg:3400, discountPct:9, isEstimated:false,
+    tier:{key:"below",label:"Abaixo do normal",emoji:"📉"}, tag:"internacional", transfers:1,
+    link: buildMockLink("POA","MAD","2026-11-08") },
 ];
 
 // ── Estado da aplicação ───────────────────────────────────────────────────
@@ -722,12 +739,18 @@ async function fetchDeals(origin, destination) {
 
 function mockFallback(origin, destination) {
   updatedAt = new Date().toISOString();
+  // Se o usuário pesquisou uma rota específica (origem + destino),
+  // só mostramos mocks que batem exatamente com essa rota.
+  // Se não houver nenhum, retornamos [] e o empty state aparece —
+  // é muito melhor do que mostrar rotas completamente diferentes.
   let r = MOCK_DEALS;
   if (origin) r = r.filter(d => d.fromCode === origin);
   if (destination && destination !== "ANY") {
-    const m = r.filter(d => d.toCode === destination);
-    r = m.length ? m : r;
+    r = r.filter(d => d.toCode === destination);
+    // Sem matches para essa rota específica → retorna vazio (não engana o usuário)
+    return r;
   }
+  // Sem destino específico ("qualquer lugar") → mostra todos da origem como exemplo
   return r;
 }
 
@@ -737,10 +760,21 @@ function renderDeals(deals) {
   grid.innerHTML = "";
 
   if (!deals.length) {
+    const origin      = document.getElementById("origin").value;
+    const destination = document.getElementById("destination").value;
+    const aviasalesUrl = (origin && destination && destination !== "ANY")
+      ? `https://www.aviasales.com/search/${origin}1${destination}1`
+      : "https://www.aviasales.com";
     grid.innerHTML = `<div class="empty-state">
-      <strong>Nenhuma oferta encontrada</strong>
-      Nenhum voo desta rota está abaixo da média histórica agora.
-      Tente outra origem ou destino.
+      <strong>Nenhuma oferta abaixo do histórico agora</strong>
+      A rota <b>${origin}${destination && destination !== "ANY" ? " → " + destination : ""}</b> não tem passagens abaixo da média dos últimos 3 meses no momento.
+      <br><br>
+      Você ainda pode pesquisar preços disponíveis diretamente:
+      <br><br>
+      <a href="${aviasalesUrl}" target="_blank" rel="noopener noreferrer"
+         style="display:inline-block;margin-top:4px;padding:10px 20px;background:var(--amber-dim);color:var(--amber);border:1px solid rgba(255,178,62,.4);border-radius:8px;font-weight:600;font-size:.88rem;text-decoration:none;">
+        Ver todos os voos disponíveis →
+      </a>
     </div>`;
     return;
   }
