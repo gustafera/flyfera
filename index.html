@@ -532,25 +532,14 @@
 
 <script>
 /* =========================================================================
-   CONFIGURAÇÃO DA API (Travelpayouts / Aviasales)
+   BUSCA DE PASSAGENS — API real (Travelpayouts) com fallback de exemplo
    -------------------------------------------------------------------------
-   1. Troque TRAVELPAYOUTS_TOKEN pelo token gerado em travelpayouts.com
-      (Ferramentas > API).
-   2. IMPORTANTE: não chame a API da Travelpayouts direto do navegador em
-      produção — o token ficaria visível pra qualquer visitante. O ideal é
-      criar uma função serverless (Vercel, Netlify Functions, Cloudflare
-      Workers etc.) que guarda o token no servidor, chama a Travelpayouts,
-      e devolve só o JSON pro site. Aqui no protótipo usamos dados de
-      exemplo em MOCK_DEALS pra já deixar toda a interface funcionando.
-   3. Quando a API real estiver pronta, é só substituir a função
-      getDeals() abaixo pela chamada de verdade, mantendo o mesmo formato
-      de objeto (route, from, to, price, avgPrice, date, discountPct).
-
-   Exemplo de chamada real (a fazer no backend, não aqui):
-   GET https://api.travelpayouts.com/v2/prices/latest
-       ?origin=GRU&currency=brl&token=SEU_TOKEN_AQUI
+   A busca real acontece em /api/deals (uma function serverless que roda no
+   servidor do Vercel, com o token guardado em variável de ambiente — nunca
+   aqui no código do navegador). Se a function não responder (site ainda em
+   GitHub Pages, API fora do ar, ou sem ofertas pra rota escolhida), o site
+   cai automaticamente nos dados de exemplo abaixo pra nunca ficar vazio.
    ========================================================================= */
-const TRAVELPAYOUTS_TOKEN = "SEU_TOKEN_AQUI";
 
 const MOCK_DEALS = [
   { from:"São Paulo", fromCode:"GRU", to:"Lisboa", toCode:"LIS", date:"12 out", price:2380, avgPrice:3690, tag:"internacional" },
@@ -567,10 +556,7 @@ const MOCK_DEALS = [
 function pctOff(price, avg){ return Math.round(100 - (price/avg*100)); }
 function fmtBRL(v){ return "R$ " + v.toLocaleString("pt-BR"); }
 
-// Stub que hoje devolve os dados de exemplo, filtrando por origem/destino
-// quando fornecidos. Troque o corpo desta função pela chamada real da API
-// quando o token estiver conectado (via seu backend/serverless).
-async function getDeals(origin, destination){
+function mockDeals(origin, destination){
   let results = MOCK_DEALS;
   if (origin) results = results.filter(d => d.fromCode === origin);
   if (destination && destination !== "ANY") {
@@ -578,6 +564,27 @@ async function getDeals(origin, destination){
     results = matched.length ? matched : results; // fallback: mostra outras saídas da mesma origem
   }
   return results;
+}
+
+async function getDeals(origin, destination){
+  const params = new URLSearchParams();
+  if (origin) params.set("origin", origin);
+  if (destination) params.set("destination", destination);
+
+  try {
+    const res = await fetch(`/api/deals?${params.toString()}`);
+    if (!res.ok) throw new Error("api indisponível");
+    const json = await res.json();
+    if (json.success && json.data && json.data.length){
+      return json.data;
+    }
+    // API respondeu mas sem ofertas abaixo da média pra essa rota agora —
+    // completa com exemplos da mesma origem pra tela não ficar vazia.
+    return mockDeals(origin, destination);
+  } catch (err) {
+    // Site ainda em GitHub Pages (sem /api) ou function fora do ar: usa exemplos.
+    return mockDeals(origin, destination);
+  }
 }
 
 /* ---------------- render: deal cards ---------------- */
