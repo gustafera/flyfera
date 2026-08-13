@@ -1,18 +1,17 @@
 // =============================================================================
-// /api/deals.js — Vercel Serverless Function (Modular & Robusto)
+// /api/deals.js — Vercel Serverless Function (Foco em Voos Brasileiros e BRL)
 // -----------------------------------------------------------------------------
-// 1. Busca preços atuais via Travelpayouts /v2/prices/latest
-// 2. Normaliza campos (value/price, number_of_changes/transfers, códigos metro como SAO/RIO)
-// 3. Compara com média ponderada histórica dos últimos 3 meses (/v1/prices/cheap)
-// 4. Retorna promoções reais (desconto >= 5%) ou fallback com os menores preços normais
+// 1. Priorização de data exata / mais próxima informada pelo usuário
+// 2. Preços e links forçados em Real Brasileiro (BRL) e Português (pt-BR)
+// 3. Mapeamento de companhias aéreas brasileiras (GOL, LATAM, Azul, Voepass)
+// 4. Média histórica e identificação de promoções reais
 // =============================================================================
 
 const AIRPORT_NAMES = {
-  // Códigos metropolitanos e de cidades (muito comuns na API)
+  // Códigos metropolitanos e de cidades
   SAO: "São Paulo", RIO: "Rio de Janeiro", BHZ: "Belo Horizonte",
   BUE: "Buenos Aires", NYC: "Nova York", LON: "Londres",
   PAR: "Paris", ROM: "Roma", MIL: "Milão", CHI: "Chicago",
-  WAS: "Washington",
 
   // Brasil — Sudeste
   GRU: "São Paulo (Guarulhos)", CGH: "São Paulo (Congonhas)", VCP: "Campinas (Viracopos)",
@@ -40,24 +39,12 @@ const AIRPORT_NAMES = {
   // Portugal
   LIS: "Lisboa", OPO: "Porto",
 
-  // América do Norte
-  MIA: "Miami", MCO: "Orlando", JFK: "Nova York (JFK)",
-  EWR: "Nova York (Newark)", LAX: "Los Angeles", ORD: "Chicago", CUN: "Cancún",
-
-  // América do Sul
-  EZE: "Buenos Aires (Ezeiza)", AEP: "Buenos Aires (Aeroparque)",
-  SCL: "Santiago", LIM: "Lima", BOG: "Bogotá",
-  MVD: "Montevidéu", ASU: "Assunção",
-
-  // Europa
-  MAD: "Madri", BCN: "Barcelona",
-  CDG: "Paris (Charles de Gaulle)", ORY: "Paris (Orly)",
-  LHR: "Londres (Heathrow)", LGW: "Londres (Gatwick)",
-  FCO: "Roma (Fiumicino)", MXP: "Milão (Malpensa)",
-  AMS: "Amsterdã", FRA: "Frankfurt",
-
-  // Outros
-  DXB: "Dubai", NRT: "Tóquio",
+  // América do Norte & América do Sul & Europa
+  MIA: "Miami", MCO: "Orlando", JFK: "Nova York (JFK)", EWR: "Nova York (Newark)",
+  LAX: "Los Angeles", CUN: "Cancún", EZE: "Buenos Aires", SCL: "Santiago",
+  LIM: "Lima", BOG: "Bogotá", MVD: "Montevidéu", MAD: "Madri",
+  BCN: "Barcelona", CDG: "Paris", LHR: "Londres", FCO: "Roma",
+  AMS: "Amsterdã", FRA: "Frankfurt", DXB: "Dubai", NRT: "Tóquio"
 };
 
 const BR_AIRPORTS = new Set([
@@ -69,7 +56,32 @@ const BR_AIRPORTS = new Set([
   "BEL","MAO","PVH","BVB","MCP","RBR"
 ]);
 
+const AIRLINE_NAMES = {
+  G3: "GOL Linhas Aéreas",
+  LA: "LATAM Airlines",
+  JJ: "LATAM Airlines",
+  AD: "Azul Linhas Aéreas",
+  "2Z": "Voepass",
+  TP: "TAP Air Portugal",
+  AA: "American Airlines",
+  AF: "Air France",
+  IB: "Iberia",
+  AR: "Aerolíneas Argentinas",
+  AV: "Avianca",
+  DL: "Delta Air Lines",
+  UA: "United Airlines",
+  CM: "Copa Airlines",
+  KL: "KLM",
+  UX: "Air Europa",
+  LH: "Lufthansa",
+  QR: "Qatar Airways",
+  EK: "Emirates",
+  BA: "British Airways",
+  TK: "Turkish Airlines"
+};
+
 const cityName = code => AIRPORT_NAMES[code] || code;
+const airlineName = code => AIRLINE_NAMES[code] || (code ? `Cia. ${code}` : "Companhia Aérea");
 
 function getDealTier(pct) {
   if (pct >= 30) return { key: "hot",   label: "Imperdível",       emoji: "🔥" };
@@ -78,18 +90,32 @@ function getDealTier(pct) {
   return null;
 }
 
+// Gera link forçando moeda BRL (Real) e idioma pt (Português) no Aviasales
 function affiliateLink(path, origin, destination, date, marker) {
   const base = "https://www.aviasales.com";
+  const params = new URLSearchParams();
+  params.set("currency", "BRL");
+  params.set("locale", "pt");
+  if (marker) params.set("marker", marker);
+
   if (path) {
-    const url = path.startsWith("http") ? path : `${base}${path}`;
-    return marker ? `${url}${url.includes("?") ? "&" : "?"}marker=${marker}` : url;
+    const isAbs = path.startsWith("http");
+    const u = isAbs ? new URL(path) : new URL(path, base);
+    u.searchParams.set("currency", "BRL");
+    u.searchParams.set("locale", "pt");
+    if (marker) u.searchParams.set("marker", marker);
+    return u.toString();
   }
+
   if (origin && destination && date) {
-    const [, m, d] = date.split("-");
-    const search = `${origin}${d || "01"}${m || "01"}${destination}1`;
-    return marker ? `${base}/search/${search}?marker=${marker}` : `${base}/search/${search}`;
+    const parts = date.split("-");
+    const d = parts[2] || "01";
+    const m = parts[1] || "01";
+    const searchPath = `/search/${origin}${d}${m}${destination}1`;
+    return `${base}${searchPath}?${params.toString()}`;
   }
-  return marker ? `${base}?marker=${marker}` : base;
+
+  return `${base}?${params.toString()}`;
 }
 
 function fmtDate(str) {
@@ -101,7 +127,7 @@ function fmtDate(str) {
   } catch { return str; }
 }
 
-// Busca média dos últimos 3 meses com pesos decrescentes
+// Histórico ponderado dos últimos 3 meses
 async function fetchHistorical(origin, destination, token) {
   const now = new Date();
   const monthJobs = [1, 2, 3].map(async (back) => {
@@ -139,8 +165,7 @@ async function fetchHistorical(origin, destination, token) {
 }
 
 export default async function handler(req, res) {
-  // CDN Cache de 5 minutos
-  res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=60");
+  res.setHeader("Cache-Control", "s-maxage=180, stale-while-revalidate=60");
 
   const token  = process.env.TRAVELPAYOUTS_TOKEN;
   const marker = process.env.TRAVELPAYOUTS_MARKER || "";
@@ -153,16 +178,20 @@ export default async function handler(req, res) {
   const destination = req.query.destination && req.query.destination !== "ANY"
     ? req.query.destination.toUpperCase()
     : null;
+  const reqDepartDate = req.query.depart_date || null;
 
   try {
     const qs = new URLSearchParams({
       currency: "brl",
       origin,
       sorting: "price",
-      limit: "30",
+      limit: "40",
       one_way: "false",
     });
     if (destination) qs.set("destination", destination);
+    if (reqDepartDate) {
+      qs.set("beginning_of_period", reqDepartDate);
+    }
 
     const curRes = await fetch(
       `https://api.travelpayouts.com/v2/prices/latest?${qs}`,
@@ -183,22 +212,48 @@ export default async function handler(req, res) {
       });
     }
 
-    // Normalizar itens para garantir campos numéricos consistentes (evita NaN)
-    const rows = rawData
+    // Normalizar itens
+    let rows = rawData
       .map(r => {
         const price = Number(r.value ?? r.price ?? 0);
         const transfers = Number(r.number_of_changes ?? r.transfers ?? 0);
+        const departDate = r.depart_date || "";
+
+        // Calcular distância de dias se o usuário escolheu uma data
+        let daysDiff = 0;
+        let isExactDate = false;
+        if (reqDepartDate && departDate) {
+          const reqD = new Date(reqDepartDate + "T12:00:00");
+          const curD = new Date(departDate + "T12:00:00");
+          daysDiff = Math.round(Math.abs((curD - reqD) / (1000 * 60 * 60 * 24)));
+          isExactDate = (daysDiff === 0);
+        }
+
         return {
           origin: r.origin,
           destination: r.destination,
-          depart_date: r.depart_date || "",
+          depart_date: departDate,
           price,
           transfers,
           airline: r.airline || null,
+          airlineName: airlineName(r.airline),
           link: r.link || null,
+          daysDiff,
+          isExactDate,
         };
       })
       .filter(r => r.price > 0 && r.origin && r.destination);
+
+    // Se o usuário selecionou uma data específica, priorizar datas mais próximas
+    if (reqDepartDate) {
+      // Filtrar preferencialmente voos num raio de até 30 dias se existirem
+      const nearRows = rows.filter(r => r.daysDiff <= 30);
+      if (nearRows.length) {
+        rows = nearRows.sort((a, b) => a.daysDiff - b.daysDiff || a.price - b.price);
+      } else {
+        rows = rows.sort((a, b) => a.daysDiff - b.daysDiff || a.price - b.price);
+      }
+    }
 
     if (!rows.length) {
       return res.status(200).json({
@@ -209,7 +264,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // Obter rotas únicas para histórico
+    // Rotas únicas para histórico
     const seen = new Set();
     const routes = [];
     for (const r of rows) {
@@ -220,7 +275,7 @@ export default async function handler(req, res) {
       }
     }
 
-    // Buscar histórico das rotas
+    // Buscar histórico
     const baseMap = {};
     await Promise.allSettled(
       routes.map(async ({ o, d }) => {
@@ -228,12 +283,11 @@ export default async function handler(req, res) {
       })
     );
 
-    // Mediana para fallback
     const sortedPrices = [...rows].map(r => r.price).sort((a, b) => a - b);
     const medianPrice  = sortedPrices[Math.floor(sortedPrices.length / 2)] || rows[0].price;
     const fallbackBase = Math.round(medianPrice * 1.25);
 
-    // Mapear ofertas promocionais
+    // Mapear ofertas
     const deals = rows
       .map(r => {
         const key = `${r.origin}|${r.destination}`;
@@ -254,6 +308,8 @@ export default async function handler(req, res) {
           toCode:        r.destination,
           date:          r.depart_date,
           dateFormatted: fmtDate(r.depart_date),
+          daysDiff:      r.daysDiff,
+          isExactDate:   r.isExactDate,
           price:         r.price,
           historicalAvg: hist,
           discountPct:   pct,
@@ -261,15 +317,22 @@ export default async function handler(req, res) {
           tier,
           transfers:     r.transfers,
           airline:       r.airline,
+          airlineName:   r.airlineName,
           link:          affiliateLink(r.link, r.origin, r.destination, r.depart_date, marker),
           tag:           isBr ? "nacional" : "internacional",
           isNormalPrice: false,
         };
       })
-      .filter(Boolean)
-      .sort((a, b) => b.discountPct - a.discountPct);
+      .filter(Boolean);
 
-    // Voos mais baratos regulares caso não haja promoção na rota
+    // Se o usuário pediu data, manter ordenação por proximidade de data primeiro, depois desconto
+    if (reqDepartDate) {
+      deals.sort((a, b) => a.daysDiff - b.daysDiff || b.discountPct - a.discountPct);
+    } else {
+      deals.sort((a, b) => b.discountPct - a.discountPct);
+    }
+
+    // Fallback regular
     const normalFallback = deals.length ? [] : rows
       .slice(0, 6)
       .map(r => {
@@ -281,6 +344,8 @@ export default async function handler(req, res) {
           toCode:        r.destination,
           date:          r.depart_date,
           dateFormatted: fmtDate(r.depart_date),
+          daysDiff:      r.daysDiff,
+          isExactDate:   r.isExactDate,
           price:         r.price,
           historicalAvg: baseMap[`${r.origin}|${r.destination}`] || null,
           discountPct:   0,
@@ -288,6 +353,7 @@ export default async function handler(req, res) {
           tier:          null,
           transfers:     r.transfers,
           airline:       r.airline,
+          airlineName:   r.airlineName,
           link:          affiliateLink(r.link, r.origin, r.destination, r.depart_date, marker),
           tag:           isBr ? "nacional" : "internacional",
         };
@@ -301,6 +367,7 @@ export default async function handler(req, res) {
         total: deals.length,
         origin,
         destination: destination || "ANY",
+        depart_date: reqDepartDate,
         updatedAt: new Date().toISOString(),
       },
     });
