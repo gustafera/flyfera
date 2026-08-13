@@ -1,14 +1,14 @@
 /* =============================================================================
-   flyfera — app.js (Frontend Controller)
+   flyfera — app.js (Frontend Controller v3)
    ============================================================================= */
 
-// ── Mock data (Usado como exemplo caso a API não tenha dados no momento) ──
+// ── Mock data ──────────────────────────────────────────────────────────────
 function buildMockLink(fromCode, toCode, date) {
-  if (!date) return "https://www.aviasales.com";
+  if (!date) return "https://www.aviasales.com?currency=BRL&locale=pt";
   const parts = date.split("-");
   const d = parts[2] || "01";
   const m = parts[1] || "01";
-  return `https://www.aviasales.com/search/${fromCode}${d}${m}${toCode}1`;
+  return `https://www.aviasales.com/search/${fromCode}${d}${m}${toCode}1?currency=BRL&locale=pt`;
 }
 
 const MOCK_DEALS = [
@@ -16,6 +16,7 @@ const MOCK_DEALS = [
     from: "São Paulo", fromCode: "GRU", to: "Lisboa", toCode: "LIS",
     date: "2026-10-12", dateFormatted: "12 de out. de 2026",
     price: 2380, historicalAvg: 3690, discountPct: 35, isEstimated: false,
+    airlineName: "TAP Air Portugal",
     tier: { key: "hot", label: "Imperdível", emoji: "🔥" },
     tag: "internacional", transfers: 0,
     link: buildMockLink("GRU", "LIS", "2026-10-12")
@@ -24,6 +25,7 @@ const MOCK_DEALS = [
     from: "Recife", fromCode: "REC", to: "Porto Alegre", toCode: "POA",
     date: "2026-09-18", dateFormatted: "18 de set. de 2026",
     price: 410, historicalAvg: 640, discountPct: 36, isEstimated: false,
+    airlineName: "Azul Linhas Aéreas",
     tier: { key: "hot", label: "Imperdível", emoji: "🔥" },
     tag: "nacional", transfers: 0,
     link: buildMockLink("REC", "POA", "2026-09-18")
@@ -32,6 +34,7 @@ const MOCK_DEALS = [
     from: "Rio de Janeiro", fromCode: "GIG", to: "Miami", toCode: "MIA",
     date: "2026-11-22", dateFormatted: "22 de nov. de 2026",
     price: 2150, historicalAvg: 3200, discountPct: 33, isEstimated: false,
+    airlineName: "LATAM Airlines",
     tier: { key: "hot", label: "Imperdível", emoji: "🔥" },
     tag: "internacional", transfers: 0,
     link: buildMockLink("GIG", "MIA", "2026-11-22")
@@ -40,6 +43,7 @@ const MOCK_DEALS = [
     from: "Brasília", fromCode: "BSB", to: "Curitiba", toCode: "CWB",
     date: "2026-08-29", dateFormatted: "29 de ago. de 2026",
     price: 295, historicalAvg: 470, discountPct: 37, isEstimated: false,
+    airlineName: "GOL Linhas Aéreas",
     tier: { key: "hot", label: "Imperdível", emoji: "🔥" },
     tag: "nacional", transfers: 0,
     link: buildMockLink("BSB", "CWB", "2026-08-29")
@@ -48,25 +52,19 @@ const MOCK_DEALS = [
     from: "Belo Horizonte", fromCode: "CNF", to: "Lisboa", toCode: "LIS",
     date: "2026-12-05", dateFormatted: "05 de dez. de 2026",
     price: 2590, historicalAvg: 3480, discountPct: 26, isEstimated: false,
+    airlineName: "TAP Air Portugal",
     tier: { key: "good", label: "Boa oferta", emoji: "✅" },
     tag: "internacional", transfers: 1,
     link: buildMockLink("CNF", "LIS", "2026-12-05")
   },
   {
-    from: "São Paulo", fromCode: "GRU", to: "Buenos Aires", toCode: "EZE",
-    date: "2026-09-03", dateFormatted: "03 de set. de 2026",
-    price: 890, historicalAvg: 1160, discountPct: 23, isEstimated: false,
-    tier: { key: "good", label: "Boa oferta", emoji: "✅" },
-    tag: "internacional", transfers: 1,
-    link: buildMockLink("GRU", "EZE", "2026-09-03")
-  },
-  {
-    from: "São Paulo", fromCode: "GRU", to: "Maceió", toCode: "MCZ",
-    date: "2026-09-02", dateFormatted: "02 de set. de 2026",
-    price: 320, historicalAvg: 400, discountPct: 20, isEstimated: false,
-    tier: { key: "good", label: "Boa oferta", emoji: "✅" },
+    from: "São Paulo", fromCode: "GRU", to: "Brasília", toCode: "BSB",
+    date: "2026-08-27", dateFormatted: "27 de ago. de 2026",
+    price: 340, historicalAvg: 580, discountPct: 41, isEstimated: false,
+    airlineName: "LATAM Airlines", isExactDate: true,
+    tier: { key: "hot", label: "Imperdível", emoji: "🔥" },
     tag: "nacional", transfers: 0,
-    link: buildMockLink("GRU", "MCZ", "2026-09-02")
+    link: buildMockLink("GRU", "BSB", "2026-08-27")
   }
 ];
 
@@ -79,7 +77,7 @@ let sortBy = "discount";  // discount | price
 let updatedAt = null;
 let refreshTimer = null;
 
-// ── Formatadores e Utilitários ─────────────────────────────────────────────
+// ── Formatadores ───────────────────────────────────────────────────────────
 function fmtBRL(value) {
   const num = Number(value);
   if (isNaN(num) || num <= 0) return "Consulte";
@@ -94,7 +92,7 @@ function timeAgo(iso) {
   return `há ${Math.floor(diff / 3600)}h`;
 }
 
-// ── Skeletons de Carregamento ──────────────────────────────────────────────
+// ── Skeletons ──────────────────────────────────────────────────────────────
 function skeletonCard() {
   const d = document.createElement("div");
   d.className = "deal-card skeleton";
@@ -138,11 +136,13 @@ function showSkeletons() {
   }
 }
 
-// ── API Fetch ──────────────────────────────────────────────────────────────
-async function fetchDeals(origin, destination) {
+// ── API Fetch com Suporte a Data ───────────────────────────────────────────
+async function fetchDeals(origin, destination, departDate, returnDate) {
   const qs = new URLSearchParams();
   if (origin) qs.set("origin", origin);
   if (destination && destination !== "ANY") qs.set("destination", destination);
+  if (departDate) qs.set("depart_date", departDate);
+  if (returnDate) qs.set("return_date", returnDate);
 
   try {
     const res = await fetch(`/api/deals?${qs}`);
@@ -181,6 +181,8 @@ function renderDeals(dealList, normalList = []) {
   if (!grid) return;
   grid.innerHTML = "";
 
+  const searchedDate = document.getElementById("depart")?.value || "";
+
   function createCardElement(d) {
     const isNormal = Boolean(d.isNormalPrice);
     const tierKey = isNormal ? "normal" : (d.tier?.key || "below");
@@ -188,6 +190,14 @@ function renderDeals(dealList, normalList = []) {
     const tierPct = isNormal ? "" : `<span class="pct">-${d.discountPct}%</span>`;
     const transferLabel = d.transfers === 0 ? "Direto"
       : d.transfers === 1 ? "1 escala" : `${d.transfers} escalas`;
+
+    // Indicação de data
+    let dateBadge = `📅 ${d.dateFormatted || d.date || "Data flexível"}`;
+    if (searchedDate && d.isExactDate) {
+      dateBadge = `🎯 Data exata · ${d.dateFormatted || d.date}`;
+    } else if (searchedDate && d.daysDiff > 0) {
+      dateBadge = `📅 ${d.dateFormatted || d.date} (mais próxima)`;
+    }
 
     const histSection = (d.historicalAvg && !isNormal)
       ? `<div class="deal-historical">
@@ -211,6 +221,8 @@ function renderDeals(dealList, normalList = []) {
       ? `<div class="normal-notice">Este voo está no valor padrão para esta rota. Não é uma promoção extraordinária, mas é uma das opções mais baratas disponíveis agora.</div>`
       : "";
 
+    const airlineLabel = d.airlineName ? `<span>✈️ ${d.airlineName}</span><span class="dot">·</span>` : "";
+
     const card = document.createElement("div");
     card.className = `deal-card tier-${tierKey}`;
     card.innerHTML = `
@@ -221,8 +233,9 @@ function renderDeals(dealList, normalList = []) {
           <span class="code">${d.fromCode} · ${d.toCode}</span>
         </div>
         <div class="deal-meta">
-          <span>📅 ${d.dateFormatted || d.date || "Data flexível"}</span>
+          <span>${dateBadge}</span>
           <span class="dot">·</span>
+          ${airlineLabel}
           <span>${d.tag === "nacional" ? "Voo nacional" : "Voo internacional"}</span>
           <span class="dot">·</span>
           <span>${transferLabel}</span>
@@ -231,7 +244,7 @@ function renderDeals(dealList, normalList = []) {
         ${histSection}
         <div class="deal-bottom">
           <div class="deal-price">
-            <div class="label">Preço hoje</div>
+            <div class="label">Preço hoje (em R$)</div>
             <div class="value">${fmtBRL(d.price)}</div>
           </div>
           <button class="deal-link" type="button">Ver detalhes</button>
@@ -246,18 +259,24 @@ function renderDeals(dealList, normalList = []) {
   if (!dealList.length && !normalList.length) {
     const origin = document.getElementById("origin")?.value || "";
     const destination = document.getElementById("destination")?.value || "";
+    const departDate = document.getElementById("depart")?.value || "";
+    let searchSegment = `${origin}0101${destination}1`;
+    if (origin && destination && departDate) {
+      const p = departDate.split("-");
+      searchSegment = `${origin}${p[2]}${p[1]}${destination}1`;
+    }
     const aviasalesUrl = (origin && destination && destination !== "ANY")
-      ? `https://www.aviasales.com/search/${origin}0101${destination}1`
-      : "https://www.aviasales.com";
+      ? `https://www.aviasales.com/search/${searchSegment}?currency=BRL&locale=pt`
+      : "https://www.aviasales.com?currency=BRL&locale=pt";
 
     grid.innerHTML = `
       <div class="empty-state">
         <strong>Nenhum voo encontrado no momento</strong>
-        Não foi possível obter dados para a rota <b>${origin}${destination && destination !== "ANY" ? " → " + destination : ""}</b> agora.
+        Não foi possível obter dados para a rota <b>${origin}${destination && destination !== "ANY" ? " → " + destination : ""}</b> na data solicitada.
         <br><br>
         <a href="${aviasalesUrl}" target="_blank" rel="noopener noreferrer"
            style="display:inline-block;padding:10px 20px;background:var(--amber-dim);color:var(--amber);border:1px solid rgba(255,178,62,.4);border-radius:8px;font-weight:600;font-size:.88rem;text-decoration:none;">
-          Buscar diretamente no Aviasales →
+          Buscar tarifas no parceiro (em R$) →
         </a>
       </div>`;
     return;
@@ -266,7 +285,7 @@ function renderDeals(dealList, normalList = []) {
   // Exibir promoções
   dealList.forEach(d => grid.appendChild(createCardElement(d)));
 
-  // Se não há promoções mas há voos com preço normal
+  // Se não há promoções mas há voos normais
   if (!dealList.length && normalList.length) {
     const origin = document.getElementById("origin")?.value || "";
     const destination = document.getElementById("destination")?.value || "";
@@ -274,8 +293,8 @@ function renderDeals(dealList, normalList = []) {
     banner.className = "empty-state";
     banner.style.marginBottom = "16px";
     banner.innerHTML = `
-      <strong>Nenhuma promoção abaixo do histórico agora</strong>
-      A rota <b>${origin}${destination && destination !== "ANY" ? " → " + destination : ""}</b> não está com descontos fora do comum hoje.
+      <strong>Nenhuma promoção abaixo do histórico para a data</strong>
+      A rota <b>${origin}${destination && destination !== "ANY" ? " → " + destination : ""}</b> está com preços dentro do padrão normal hoje.
       <br>Abaixo estão as <b>melhores tarifas disponíveis</b> encontradas:`;
     grid.insertBefore(banner, grid.firstChild);
 
@@ -288,7 +307,7 @@ function renderDeals(dealList, normalList = []) {
   }
 }
 
-// ── Animação Split-Flap do Painel ──────────────────────────────────────────
+// ── Animação Split-Flap ────────────────────────────────────────────────────
 const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const FLAP_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
@@ -299,7 +318,6 @@ function flapText(el, targetText) {
   }
   let step = 0;
   const totalSteps = 9;
-  const intervalTime = 60;
   const timer = setInterval(() => {
     el.textContent = targetText.split("").map(char => {
       if (" →·,".includes(char)) return char;
@@ -310,7 +328,7 @@ function flapText(el, targetText) {
       clearInterval(timer);
       el.textContent = targetText;
     }
-  }, intervalTime);
+  }, 60);
 }
 
 function renderBoard(deals) {
@@ -383,7 +401,7 @@ function updateStats(deals) {
   document.getElementById("stat-updated").textContent = `Atualizado ${timeAgo(updatedAt)}`;
 }
 
-// ── Modal de Detalhes ──────────────────────────────────────────────────────
+// ── Modal de Detalhes da Oferta ────────────────────────────────────────────
 function openModal(deal) {
   const isNormal = Boolean(deal.isNormalPrice);
   const tierKey = isNormal ? "normal" : (deal.tier?.key || "below");
@@ -391,6 +409,7 @@ function openModal(deal) {
   const transferLabel = deal.transfers === 0 ? "Voo direto"
     : deal.transfers === 1 ? "1 escala" : `${deal.transfers} escalas`;
   const tagLabel = deal.tag === "nacional" ? "Nacional" : "Internacional";
+  const airlineText = deal.airlineName || "Companhia Aérea";
 
   const modalBody = document.getElementById("modal-body");
   if (!modalBody) return;
@@ -401,12 +420,20 @@ function openModal(deal) {
     <div class="modal-codes">${deal.fromCode} &nbsp;·&nbsp; ${deal.toCode}</div>
     <div class="modal-grid">
       <div class="modal-cell">
-        <div class="lbl">Data de ida</div>
+        <div class="lbl">Data do voo</div>
         <div class="val">${deal.dateFormatted || deal.date || "Flexível"}</div>
+      </div>
+      <div class="modal-cell">
+        <div class="lbl">Companhia Aérea</div>
+        <div class="val">✈️ ${airlineText}</div>
       </div>
       <div class="modal-cell">
         <div class="lbl">Tipo de voo</div>
         <div class="val">${tagLabel} · ${transferLabel}</div>
+      </div>
+      <div class="modal-cell">
+        <div class="lbl">Moeda garantida</div>
+        <div class="val">🇧🇷 Real Brasileiro (R$)</div>
       </div>
     </div>
     <div class="modal-price-row">
@@ -417,19 +444,19 @@ function openModal(deal) {
           : `<div style="font-size:.82rem;color:var(--ink-dim);">–</div>`}
       </div>
       <div class="now">
-        <div class="lbl">Preço hoje</div>
+        <div class="lbl">Preço atual</div>
         <div class="amt">${fmtBRL(deal.price)}</div>
       </div>
     </div>
     ${isNormal
-      ? `<div class="modal-note">📊 <strong>Este voo está no preço histórico normal para esta rota.</strong><br>Não foi detectada uma queda anormal, mas é uma das melhores tarifas encontradas no momento.</div>`
-      : `<div class="modal-note">⚠️ O flyfera compara preços com a média dos últimos 3 meses. Confirme o valor final e disponibilidade no parceiro antes da reserva.</div>`
+      ? `<div class="modal-note">📊 <strong>Tarifa padrão da rota:</strong> Os valores estão dentro da média histórica. A compra é realizada em Reais (R$) com suporte a Pix e cartões brasileiros.</div>`
+      : `<div class="modal-note">✅ <strong>Desconto detectado:</strong> Preço ${deal.discountPct}% abaixo da média de 3 meses. Pagamento 100% em Reais (R$) emitido diretamente pelas companhias parceiras.</div>`
     }
     <a class="btn-buy" href="${deal.link || '#'}" target="_blank" rel="noopener noreferrer">
-      Comprar esta passagem &rarr;
+      Ver voo no parceiro oficial (em R$) &rarr;
     </a>
     <p style="text-align:center;font-size:.7rem;color:var(--ink-dim);margin-top:10px;">
-      Você será redirecionado para Aviasales (parceiro Travelpayouts) para concluir com segurança.
+      Você será direcionado com os valores travados em Reais (R$) e opção de emissão direta.
     </p>`;
 
   const ov = document.getElementById("modal-overlay");
@@ -455,7 +482,10 @@ function resetAutoRefresh() {
   refreshTimer = setInterval(async () => {
     const origin = document.getElementById("origin")?.value || "";
     const destination = document.getElementById("destination")?.value || "";
-    const { deals, normalFallback } = await fetchDeals(origin, destination);
+    const departDate = document.getElementById("depart")?.value || "";
+    const returnDate = document.getElementById("return")?.value || "";
+
+    const { deals, normalFallback } = await fetchDeals(origin, destination, departDate, returnDate);
     allDeals = deals;
     allNormal = normalFallback;
     renderBoard(allDeals);
@@ -464,9 +494,16 @@ function resetAutoRefresh() {
   }, 5 * 60 * 1000);
 }
 
-// ── Inicialização & Eventos ────────────────────────────────────────────────
+// ── Inicialização ──────────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", () => {
-  // Configurar Filtros
+  // Ajustar data mínima nos inputs para hoje
+  const todayIso = new Date().toISOString().split("T")[0];
+  const departInput = document.getElementById("depart");
+  const returnInput = document.getElementById("return");
+  if (departInput) departInput.min = todayIso;
+  if (returnInput) returnInput.min = todayIso;
+
+  // Filtros
   const filterContainer = document.getElementById("filter-pills");
   if (filterContainer) {
     filterContainer.addEventListener("click", e => {
@@ -492,14 +529,13 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Toggle Tipo de Viagem (Ida e volta / Só ida)
+  // Toggle Tipo de Viagem
   document.querySelectorAll(".trip-toggle button").forEach(btn => {
     btn.addEventListener("click", () => {
       document.querySelectorAll(".trip-toggle button").forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
-      const returnField = document.getElementById("return-field");
-      if (returnField) {
-        returnField.style.display = btn.dataset.trip === "one" ? "none" : "flex";
+      if (returnInput && returnInput.parentElement) {
+        returnInput.parentElement.style.display = btn.dataset.trip === "one" ? "none" : "flex";
       }
     });
   });
@@ -521,8 +557,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const origin = document.getElementById("origin")?.value || "";
       const destination = document.getElementById("destination")?.value || "";
+      const departDate = document.getElementById("depart")?.value || "";
+      const returnDate = document.getElementById("return")?.value || "";
 
-      const { deals, normalFallback } = await fetchDeals(origin, destination);
+      const { deals, normalFallback } = await fetchDeals(origin, destination, departDate, returnDate);
       allDeals = deals;
       allNormal = normalFallback;
 
@@ -550,11 +588,11 @@ document.addEventListener("DOMContentLoaded", () => {
     alertForm.addEventListener("submit", e => {
       e.preventDefault();
       const msg = document.getElementById("alert-msg");
-      if (msg) msg.textContent = "E-mail cadastrado! Você receberá nossos alertas assim que o serviço for ativado.";
+      if (msg) msg.textContent = "E-mail cadastrado com sucesso! Avisaremos quando o serviço entrar no ar.";
     });
   }
 
-  // Fechamento de Modal
+  // Modal Close Handlers
   const modalCloseBtn = document.getElementById("modal-close");
   if (modalCloseBtn) modalCloseBtn.addEventListener("click", closeModal);
 
