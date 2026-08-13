@@ -224,9 +224,33 @@ export default async function handler(req, res) {
       .filter(Boolean)
       .sort((a, b) => b.discountPct - a.discountPct);
 
+    // Se não há promoções, retorna os voos mais baratos disponíveis como fallback,
+    // marcados como isNormalPrice — o frontend exibe com badge "Preço no padrão".
+    const normalFallback = deals.length ? [] : rows
+      .slice(0, 5)
+      .map(r => ({
+        from:          cityName(r.origin),
+        fromCode:      r.origin,
+        to:            cityName(r.destination),
+        toCode:        r.destination,
+        date:          r.depart_date || "",
+        dateFormatted: fmtDate(r.depart_date),
+        price:         r.price,
+        historicalAvg: baseMap[`${r.origin}|${r.destination}`] || null,
+        discountPct:   0,
+        isNormalPrice: true,
+        tier:          null,
+        transfers:     r.transfers ?? 0,
+        airline:       r.airline || null,
+        link:          affiliateLink(r.link, r.origin, r.destination, r.depart_date, marker),
+        tag:           BR_AIRPORTS.has(r.origin) && BR_AIRPORTS.has(r.destination)
+                         ? "nacional" : "internacional",
+      }));
+
     return res.status(200).json({
       success: true,
       data:    deals,
+      normalFallback,
       meta: {
         total:     deals.length,
         origin,
