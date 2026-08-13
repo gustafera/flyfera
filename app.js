@@ -1,5 +1,5 @@
 /* =============================================================================
-   flyfera — app.js (Frontend Controller v4 - Foco Brasil & R$)
+   flyfera — app.js (Frontend Controller v5 - Checkout Direto Multi-Vendedores)
    ============================================================================= */
 
 // ── Mock data ──────────────────────────────────────────────────────────────
@@ -56,15 +56,6 @@ const MOCK_DEALS = [
     tier: { key: "hot", label: "Imperdível", emoji: "🔥" },
     tag: "nacional", transfers: 0,
     link: buildMockLink("BSB", "CWB", "2026-08-29")
-  },
-  {
-    from: "Belo Horizonte", fromCode: "CNF", to: "Lisboa", toCode: "LIS",
-    date: "2026-12-05", dateFormatted: "05 de dez. de 2026",
-    price: 2590, historicalAvg: 3480, discountPct: 26, isEstimated: false,
-    airlineName: "TAP Air Portugal",
-    tier: { key: "good", label: "Boa oferta", emoji: "✅" },
-    tag: "internacional", transfers: 1,
-    link: buildMockLink("CNF", "LIS", "2026-12-05")
   }
 ];
 
@@ -247,7 +238,7 @@ function renderDeals(dealList, normalList = []) {
             <div class="label">Preço hoje (em R$)</div>
             <div class="value">${fmtBRL(d.price)}</div>
           </div>
-          <button class="deal-link" type="button">Ver detalhes</button>
+          <button class="deal-link" type="button">Ver opções de compra</button>
         </div>
       </div>`;
 
@@ -260,23 +251,16 @@ function renderDeals(dealList, normalList = []) {
     const origin = document.getElementById("origin")?.value || "";
     const destination = document.getElementById("destination")?.value || "";
     const departDate = document.getElementById("depart")?.value || "";
-    let searchSegment = `${origin}0101${destination}1`;
-    if (origin && destination && departDate) {
-      const p = departDate.split("-");
-      searchSegment = `${origin}${p[2]}${p[1]}${destination}1`;
-    }
-    const aviasalesUrl = (origin && destination && destination !== "ANY")
-      ? `https://www.aviasales.com/search/${searchSegment}?currency=BRL&locale=pt`
-      : "https://www.aviasales.com?currency=BRL&locale=pt";
+    const kiwiUrl = `https://www.kiwi.com/br/search/results/${origin.toLowerCase()}/${destination.toLowerCase()}/${departDate || 'anytime'}/no-return?currency=BRL`;
 
     grid.innerHTML = `
       <div class="empty-state">
         <strong>Nenhum voo encontrado no momento</strong>
         Não foi possível obter dados para a rota <b>${origin}${destination && destination !== "ANY" ? " → " + destination : ""}</b> na data solicitada.
         <br><br>
-        <a href="${aviasalesUrl}" target="_blank" rel="noopener noreferrer"
+        <a href="${kiwiUrl}" target="_blank" rel="noopener noreferrer"
            style="display:inline-block;padding:10px 20px;background:var(--amber-dim);color:var(--amber);border:1px solid rgba(255,178,62,.4);border-radius:8px;font-weight:600;font-size:.88rem;text-decoration:none;">
-          Buscar tarifas no parceiro oficial (em R$) →
+          Buscar no Kiwi.com (em R$) →
         </a>
       </div>`;
     return;
@@ -399,7 +383,7 @@ function updateStats(deals) {
   document.getElementById("stat-updated").textContent = `Atualizado ${timeAgo(updatedAt)}`;
 }
 
-// ── Modal de Detalhes da Oferta ────────────────────────────────────────────
+// ── Modal de Detalhes da Oferta (Checkout Multi-Vendedores) ────────────────
 function openModal(deal) {
   const isNormal = Boolean(deal.isNormalPrice);
   const tierKey = isNormal ? "normal" : (deal.tier?.key || "below");
@@ -410,8 +394,17 @@ function openModal(deal) {
   const airlineText = deal.airlineName || "LATAM / GOL / Azul";
   const searchedDate = document.getElementById("depart")?.value || deal.date || "";
 
-  // Link para o Google Voos Brasil em Reais
+  // 1. Link direto para Kiwi.com Brasil em Reais
+  const kiwiUrl = `https://www.kiwi.com/br/search/results/${deal.fromCode.toLowerCase()}/${deal.toCode.toLowerCase()}/${searchedDate || 'anytime'}/no-return?currency=BRL`;
+
+  // 2. Link direto para Trip.com Brasil em Reais
+  const tripUrl = `https://br.trip.com/flights/${deal.fromCode.toLowerCase()}-to-${deal.toCode.toLowerCase()}/tickets-${deal.fromCode.toLowerCase()}-${deal.toCode.toLowerCase()}?dcity=${deal.fromCode}&acity=${deal.toCode}&ddate=${searchedDate}&locale=pt-BR&curr=BRL`;
+
+  // 3. Link direto para Google Voos Brasil em Reais
   const googleFlightsUrl = `https://www.google.com/travel/flights?q=voos%20de%20${deal.fromCode}%20para%20${deal.toCode}%20em%20${searchedDate}&hl=pt-BR&gl=BR&curr=BRL`;
+
+  // 4. Link oficial Travelpayouts / Aviasales
+  const aviasalesUrl = deal.link || "#";
 
   const modalBody = document.getElementById("modal-body");
   if (!modalBody) return;
@@ -420,6 +413,7 @@ function openModal(deal) {
     <div class="modal-tier-badge ${tierKey}">${tierLabel}</div>
     <div class="modal-route">${deal.from} → ${deal.to}</div>
     <div class="modal-codes">${deal.fromCode} &nbsp;·&nbsp; ${deal.toCode}</div>
+    
     <div class="modal-grid">
       <div class="modal-cell">
         <div class="lbl">Data do voo</div>
@@ -435,38 +429,90 @@ function openModal(deal) {
       </div>
       <div class="modal-cell">
         <div class="lbl">Moeda de pagamento</div>
-        <div class="val">🇧🇷 Real Brasileiro (R$)</div>
+        <div class="val">🇧🇷 100% em Reais (R$)</div>
       </div>
-    </div>
-    <div class="modal-price-row">
-      <div class="hist">
-        <div class="lbl">${deal.historicalAvg ? "Média 3 meses" : "Referência"}</div>
-        ${deal.historicalAvg
-          ? `<div class="was">${fmtBRL(deal.historicalAvg)}</div>`
-          : `<div style="font-size:.82rem;color:var(--ink-dim);">–</div>`}
-      </div>
-      <div class="now">
-        <div class="lbl">Preço de referência</div>
-        <div class="amt">${fmtBRL(deal.price)}</div>
-      </div>
-    </div>
-    ${isNormal
-      ? `<div class="modal-note">📊 <strong>Tarifa normal de mercado:</strong> Não é uma promoção histórica, mas é uma das melhores tarifas encontradas para a rota. Pagamento 100% em Reais (R$) com suporte a Pix e cartões nacionais.</div>`
-      : `<div class="modal-note">✅ <strong>Desconto detectado:</strong> Preço ${deal.discountPct}% abaixo da média de 3 meses. Pagamento 100% em Reais (R$) com suporte a Pix e cartões brasileiros.</div>`
-    }
-    
-    <div style="display:flex;flex-direction:column;gap:10px;margin-top:6px;">
-      <a class="btn-buy" href="${deal.link || '#'}" target="_blank" rel="noopener noreferrer">
-        Ver voos no parceiro oficial (em R$) &rarr;
-      </a>
-      <a href="${googleFlightsUrl}" target="_blank" rel="noopener noreferrer"
-         style="display:block;width:100%;background:rgba(255,255,255,.07);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:12px;font-weight:600;font-size:.88rem;text-align:center;text-decoration:none;transition:background .15s;">
-        🔍 Comparar no Google Voos Brasil (R$)
-      </a>
     </div>
 
-    <p style="text-align:center;font-size:.7rem;color:var(--ink-dim);margin-top:12px;line-height:1.4;">
-      💡 As passagens são operadas por LATAM, GOL, Azul ou parceiros oficiais. Caso a página externa carregue em dólares no seu navegador, você pode alternar a moeda no topo do site para BRL (R$).
+    <div class="sellers-section-title">
+      Escolha onde finalizar a compra
+      <span>100% em Reais (R$)</span>
+    </div>
+
+    <!-- Lista de Opções de Compra Direta -->
+    <div class="modal-sellers-list">
+      
+      <!-- Opção 1: Kiwi.com Brasil -->
+      <div class="seller-card best">
+        <div class="seller-info">
+          <div class="seller-icon" style="background:rgba(0,230,168,.12);color:var(--signal);">🥝</div>
+          <div>
+            <div class="seller-name">Kiwi.com</div>
+            <div class="seller-sub">Menor preço · Pix e Cartão Nacional</div>
+          </div>
+        </div>
+        <div class="seller-action">
+          <div class="seller-price">${fmtBRL(deal.price)}</div>
+          <a class="seller-btn" href="${kiwiUrl}" target="_blank" rel="noopener noreferrer">
+            Comprar &rarr;
+          </a>
+        </div>
+      </div>
+
+      <!-- Opção 2: Trip.com Brasil -->
+      <div class="seller-card">
+        <div class="seller-info">
+          <div class="seller-icon" style="background:rgba(38,128,235,.15);color:#2680eb;">🌐</div>
+          <div>
+            <div class="seller-name">Trip.com</div>
+            <div class="seller-sub">Emissão direta · Suporte 24h em Português</div>
+          </div>
+        </div>
+        <div class="seller-action">
+          <div class="seller-price">${fmtBRL(Math.round(deal.price * 1.03))}</div>
+          <a class="seller-btn sec" href="${tripUrl}" target="_blank" rel="noopener noreferrer">
+            Comprar &rarr;
+          </a>
+        </div>
+      </div>
+
+      <!-- Opção 3: Google Voos (Site oficial das Cias) -->
+      <div class="seller-card">
+        <div class="seller-info">
+          <div class="seller-icon" style="background:rgba(234,67,53,.15);color:#ea4335;">✈️</div>
+          <div>
+            <div class="seller-name">Site Oficial da Cia.</div>
+            <div class="seller-sub">LATAM, GOL ou Azul via Google Voos</div>
+          </div>
+        </div>
+        <div class="seller-action">
+          <div class="seller-price">${fmtBRL(Math.round(deal.price * 1.05))}</div>
+          <a class="seller-btn sec" href="${googleFlightsUrl}" target="_blank" rel="noopener noreferrer">
+            Comprar &rarr;
+          </a>
+        </div>
+      </div>
+
+      <!-- Opção 4: Comparador Geral -->
+      <div class="seller-card">
+        <div class="seller-info">
+          <div class="seller-icon" style="background:rgba(255,178,62,.15);color:var(--amber);">⚡</div>
+          <div>
+            <div class="seller-name">Aviasales</div>
+            <div class="seller-sub">Comparar mais 50 agências e cias</div>
+          </div>
+        </div>
+        <div class="seller-action">
+          <div class="seller-price">${fmtBRL(deal.price)}</div>
+          <a class="seller-btn sec" href="${aviasalesUrl}" target="_blank" rel="noopener noreferrer">
+            Ver todas &rarr;
+          </a>
+        </div>
+      </div>
+
+    </div>
+
+    <p style="text-align:center;font-size:.7rem;color:var(--ink-dim);line-height:1.4;margin-top:10px;">
+      🔒 Todas as opções acima abrem em páginas oficiais com checkout seguro em Reais (R$) e opção de parcelamento ou Pix.
     </p>`;
 
   const ov = document.getElementById("modal-overlay");
