@@ -1,45 +1,82 @@
 // =============================================================================
-// /api/deals.js — Vercel Serverless Function (Busca por Data Precisa & Multi-API)
-// -----------------------------------------------------------------------------
-// 1. Consulta /v1/prices/cheap + /v2/prices/month-matrix + /v2/prices/latest
-// 2. Filtro estrito: se o usuário pediu 25/08, traz apenas voos em ±3 dias (nunca meses depois)
-// 3. Suporte a Só Ida (one_way=true) e Ida e Volta (one_way=false)
-// 4. Média histórica e identificação de promoções reais
+// /api/deals.js — Vercel Serverless Function (Identificação Precisa de Aeroportos)
 // =============================================================================
 
 const AIRPORT_NAMES = {
-  SAO: "São Paulo", RIO: "Rio de Janeiro", BHZ: "Belo Horizonte",
-  BUE: "Buenos Aires", NYC: "Nova York", LON: "Londres",
-  PAR: "Paris", ROM: "Roma", MIL: "Milão", CHI: "Chicago",
+  // Regiões Metropolitanas
+  SAO: "São Paulo (GRU / CGH / VCP)",
+  RIO: "Rio de Janeiro (GIG / SDU)",
+  BHZ: "Belo Horizonte (CNF / PLU)",
+  BUE: "Buenos Aires (EZE / AEP)",
+  NYC: "Nova York (JFK / EWR)",
+  LON: "Londres (LHR / LGW)",
+  PAR: "Paris (CDG / ORY)",
+  ROM: "Roma (FCO / CIA)",
+  MIL: "Milão (MXP / LIN)",
+  CHI: "Chicago (ORD / MDW)",
 
   // Brasil — Sudeste
-  GRU: "São Paulo (Guarulhos)", CGH: "São Paulo (Congonhas)", VCP: "Campinas (Viracopos)",
-  GIG: "Rio de Janeiro (Galeão)", SDU: "Rio de Janeiro (Santos Dumont)",
-  BSB: "Brasília", CNF: "Belo Horizonte (Confins)", PLU: "Belo Horizonte (Pampulha)",
-  VIX: "Vitória",
+  GRU: "São Paulo — Guarulhos (GRU)",
+  CGH: "São Paulo — Congonhas (CGH)",
+  VCP: "Campinas / SP — Viracopos (VCP)",
+  GIG: "Rio de Janeiro — Galeão (GIG)",
+  SDU: "Rio de Janeiro — Santos Dumont (SDU)",
+  BSB: "Brasília — Pres. JK (BSB)",
+  CNF: "Belo Horizonte — Confins (CNF)",
+  PLU: "Belo Horizonte — Pampulha (PLU)",
+  VIX: "Vitória — Eurico de Aguiar (VIX)",
 
   // Brasil — Sul
-  POA: "Porto Alegre", CWB: "Curitiba", FLN: "Florianópolis",
-  IGU: "Foz do Iguaçu", JOI: "Joinville", NVT: "Navegantes",
-  LDB: "Londrina", MGF: "Maringá",
+  POA: "Porto Alegre — Salgado Filho (POA)",
+  CWB: "Curitiba — Afonso Pena (CWB)",
+  FLN: "Florianópolis — Hercílio Luz (FLN)",
+  IGU: "Foz do Iguaçu (IGU)",
+  JOI: "Joinville (JOI)",
+  NVT: "Navegantes (NVT)",
+  LDB: "Londrina (LDB)",
+  MGF: "Maringá (MGF)",
 
   // Brasil — Centro-Oeste
-  CGB: "Cuiabá", CGR: "Campo Grande", PMW: "Palmas", GYN: "Goiânia",
+  CGB: "Cuiabá — Mal. Rondon (CGB)",
+  CGR: "Campo Grande (CGR)",
+  PMW: "Palmas (PMW)",
+  GYN: "Goiânia — Santa Genoveva (GYN)",
 
   // Brasil — Nordeste
-  REC: "Recife", SSA: "Salvador", FOR: "Fortaleza", NAT: "Natal",
-  MCZ: "Maceió", SLZ: "São Luís", THE: "Teresina",
-  AJU: "Aracaju", JPA: "João Pessoa",
+  REC: "Recife — Guararapes (REC)",
+  SSA: "Salvador — Dep. L. E. Magalhães (SSA)",
+  FOR: "Fortaleza — Pinto Martins (FOR)",
+  NAT: "Natal — Gov. Aluízio Alves (NAT)",
+  MCZ: "Maceió — Zumbi dos Palmares (MCZ)",
+  SLZ: "São Luís — Mal. Cunha Machado (SLZ)",
+  THE: "Teresina — Sen. Petrônio Portella (THE)",
+  AJU: "Aracaju — Santa Maria (AJU)",
+  JPA: "João Pessoa — Pres. Castro Pinto (JPA)",
 
   // Brasil — Norte
-  BEL: "Belém", MAO: "Manaus", PVH: "Porto Velho",
-  BVB: "Boa Vista", MCP: "Macapá", RBR: "Rio Branco",
+  BEL: "Belém — Val-de-Cans (BEL)",
+  MAO: "Manaus — Eduardo Gomes (MAO)",
+  PVH: "Porto Velho (PVH)",
+  BVB: "Boa Vista (BVB)",
+  MCP: "Macapá (MCP)",
+  RBR: "Rio Branco (RBR)",
 
   // Internacional
-  LIS: "Lisboa", OPO: "Porto", MIA: "Miami", MCO: "Orlando",
-  JFK: "Nova York", EZE: "Buenos Aires", SCL: "Santiago",
-  LIM: "Lima", BOG: "Bogotá", MVD: "Montevidéu", MAD: "Madri",
-  BCN: "Barcelona", CDG: "Paris", LHR: "Londres", FCO: "Roma"
+  LIS: "Lisboa — Humberto Delgado (LIS)",
+  OPO: "Porto — Francisco Sá Carneiro (OPO)",
+  MIA: "Miami International (MIA)",
+  MCO: "Orlando International (MCO)",
+  JFK: "Nova York — JFK (JFK)",
+  EZE: "Buenos Aires — Ezeiza (EZE)",
+  SCL: "Santiago — Arturo Merino Benítez (SCL)",
+  LIM: "Lima — Jorge Chávez (LIM)",
+  BOG: "Bogotá — El Dorado (BOG)",
+  MVD: "Montevidéu — Carrasco (MVD)",
+  MAD: "Madri — Barajas (MAD)",
+  BCN: "Barcelona — El Prat (BCN)",
+  CDG: "Paris — Charles de Gaulle (CDG)",
+  LHR: "Londres — Heathrow (LHR)",
+  FCO: "Roma — Fiumicino (FCO)"
 };
 
 const BR_AIRPORTS = new Set([
@@ -119,7 +156,6 @@ function fmtDate(str) {
   } catch { return str; }
 }
 
-// Histórico ponderado dos últimos 3 meses
 async function fetchHistorical(origin, destination, isOneWay, token) {
   const now = new Date();
   const monthJobs = [1, 2, 3].map(async (back) => {
@@ -183,11 +219,9 @@ export default async function handler(req, res) {
   try {
     const rawRows = [];
 
-    // ── 1. Se o usuário escolheu data, busca voos específicos para o mês/data ──
     if (reqDepartDate && destination) {
-      const monthStr = reqDepartDate.slice(0, 7); // ex: "2026-08"
+      const monthStr = reqDepartDate.slice(0, 7);
 
-      // Consulta 1: /v1/prices/cheap com a data/mês específico
       const p1 = (async () => {
         try {
           const qs = new URLSearchParams({
@@ -213,7 +247,6 @@ export default async function handler(req, res) {
         } catch (_) {}
       })();
 
-      // Consulta 2: /v2/prices/month-matrix para o mês exato
       const p2 = (async () => {
         try {
           const qs = new URLSearchParams({
@@ -244,7 +277,6 @@ export default async function handler(req, res) {
       await Promise.allSettled([p1, p2]);
     }
 
-    // ── 2. Consulta geral /v2/prices/latest ──────────────────────────────────
     try {
       const qs = new URLSearchParams({
         currency: "brl",
@@ -278,7 +310,6 @@ export default async function handler(req, res) {
       }
     } catch (_) {}
 
-    // ── 3. Normalização e Deduplicação ──────────────────────────────────────
     const seenMap = new Map();
     let rows = [];
 
@@ -312,9 +343,6 @@ export default async function handler(req, res) {
       });
     }
 
-    // ── 4. Filtro Rígido de Data ────────────────────────────────────────────
-    // Se o usuário pediu 25/08, traz APENAS voos num raio máximo de ±3 dias (ou ±7 dias no mesmo mês).
-    // NUNCA exibe voos de meses seguintes fingindo que são da data pedida.
     if (reqDepartDate) {
       const strictNear = rows.filter(r => r.daysDiff <= 3);
       if (strictNear.length) {
@@ -324,7 +352,6 @@ export default async function handler(req, res) {
         if (weekNear.length) {
           rows = weekNear.sort((a, b) => a.daysDiff - b.daysDiff || a.price - b.price);
         } else {
-          // Se não há dados para a data no cache, não engana o usuário com setembro
           rows = [];
         }
       }
@@ -346,7 +373,6 @@ export default async function handler(req, res) {
       });
     }
 
-    // ── 5. Histórico e Classificação de Desconto ────────────────────────────
     const seenRoutes = new Set();
     const routes = [];
     for (const r of rows) {
@@ -411,7 +437,6 @@ export default async function handler(req, res) {
       deals.sort((a, b) => b.discountPct - a.discountPct);
     }
 
-    // Fallback com preços normais se não houver promoção histórica
     const normalFallback = deals.length ? [] : rows
       .slice(0, 6)
       .map(r => {
