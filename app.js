@@ -1,16 +1,26 @@
 /* =============================================================================
-   flyfera — app.js (Frontend Controller v7 - Links Diretos para as Cias Aéreas)
+   flyfera — app.js (Frontend Controller v9 - Identificação de Aeroportos)
    ============================================================================= */
 
 // ── Mock data ──────────────────────────────────────────────────────────────
 function buildMockLink(fromCode, toCode, date) {
-  if (!date) return "https://www.latamairlines.com/br/pt";
-  return `https://www.latamairlines.com/br/pt/ofertas-voos?origin=${fromCode}&destination=${toCode}&outbound=${date}T12%3A00%3A00.000Z&trip=OW&adt=1`;
+  return `https://www.kiwi.com/br/search/results/${fromCode.toLowerCase()}/${toCode.toLowerCase()}/${date || 'anytime'}/no-return?currency=BRL`;
 }
 
 const MOCK_DEALS = [
   {
-    from: "São Paulo", fromCode: "GRU", to: "Brasília", toCode: "BSB",
+    from: "Brasília — Pres. JK (BSB)", fromCode: "BSB",
+    to: "Campinas / SP — Viracopos (VCP)", toCode: "VCP",
+    date: "2026-09-17", dateFormatted: "17 de set. de 2026",
+    price: 219, historicalAvg: 580, discountPct: 62, isEstimated: false,
+    airlineName: "Azul Linhas Aéreas", isExactDate: true,
+    tier: { key: "hot", label: "Imperdível", emoji: "🔥" },
+    tag: "nacional", transfers: 0,
+    link: buildMockLink("BSB", "VCP", "2026-09-17")
+  },
+  {
+    from: "São Paulo — Guarulhos (GRU)", fromCode: "GRU",
+    to: "Brasília — Pres. JK (BSB)", toCode: "BSB",
     date: "2026-08-25", dateFormatted: "25 de ago. de 2026",
     price: 340, historicalAvg: 580, discountPct: 41, isEstimated: false,
     airlineName: "LATAM / GOL / Azul", isExactDate: true,
@@ -19,40 +29,14 @@ const MOCK_DEALS = [
     link: buildMockLink("GRU", "BSB", "2026-08-25")
   },
   {
-    from: "São Paulo", fromCode: "GRU", to: "Lisboa", toCode: "LIS",
+    from: "São Paulo — Guarulhos (GRU)", fromCode: "GRU",
+    to: "Lisboa — Humberto Delgado (LIS)", toCode: "LIS",
     date: "2026-10-12", dateFormatted: "12 de out. de 2026",
     price: 2380, historicalAvg: 3690, discountPct: 35, isEstimated: false,
     airlineName: "TAP Air Portugal",
     tier: { key: "hot", label: "Imperdível", emoji: "🔥" },
     tag: "internacional", transfers: 0,
     link: buildMockLink("GRU", "LIS", "2026-10-12")
-  },
-  {
-    from: "Recife", fromCode: "REC", to: "Porto Alegre", toCode: "POA",
-    date: "2026-09-18", dateFormatted: "18 de set. de 2026",
-    price: 410, historicalAvg: 640, discountPct: 36, isEstimated: false,
-    airlineName: "Azul Linhas Aéreas",
-    tier: { key: "hot", label: "Imperdível", emoji: "🔥" },
-    tag: "nacional", transfers: 0,
-    link: buildMockLink("REC", "POA", "2026-09-18")
-  },
-  {
-    from: "Rio de Janeiro", fromCode: "GIG", to: "Miami", toCode: "MIA",
-    date: "2026-11-22", dateFormatted: "22 de nov. de 2026",
-    price: 2150, historicalAvg: 3200, discountPct: 33, isEstimated: false,
-    airlineName: "LATAM Airlines",
-    tier: { key: "hot", label: "Imperdível", emoji: "🔥" },
-    tag: "internacional", transfers: 0,
-    link: buildMockLink("GIG", "MIA", "2026-11-22")
-  },
-  {
-    from: "Brasília", fromCode: "BSB", to: "Curitiba", toCode: "CWB",
-    date: "2026-08-29", dateFormatted: "29 de ago. de 2026",
-    price: 295, historicalAvg: 470, discountPct: 37, isEstimated: false,
-    airlineName: "GOL Linhas Aéreas",
-    tier: { key: "hot", label: "Imperdível", emoji: "🔥" },
-    tag: "nacional", transfers: 0,
-    link: buildMockLink("BSB", "CWB", "2026-08-29")
   }
 ];
 
@@ -65,7 +49,7 @@ let sortBy = "discount";
 let updatedAt = null;
 let refreshTimer = null;
 
-// ── Formatadores ───────────────────────────────────────────────────────────
+// ── Formatadores e Utilitários ─────────────────────────────────────────────
 function fmtBRL(value) {
   const num = Number(value);
   if (isNaN(num) || num <= 0) return "Consulte";
@@ -78,6 +62,15 @@ function timeAgo(iso) {
   if (diff < 60) return `há ${diff}s`;
   if (diff < 3600) return `há ${Math.floor(diff / 60)}min`;
   return `há ${Math.floor(diff / 3600)}h`;
+}
+
+function toAirport(code) {
+  if (!code) return "GRU";
+  const c = code.toUpperCase();
+  if (c === "SAO") return "GRU";
+  if (c === "RIO") return "GIG";
+  if (c === "BHZ") return "CNF";
+  return c;
 }
 
 // ── Skeletons ──────────────────────────────────────────────────────────────
@@ -164,30 +157,30 @@ function mockFallback(origin, destination) {
   return r;
 }
 
-// ── Geradores de Links Diretos para as Cias ────────────────────────────────
-function getAzulUrl(from, to, date) {
-  if (!date) return "https://www.voeazul.com.br";
-  const parts = date.split("-");
-  const formatted = `${parts[2] || '01'}/${parts[1] || '01'}/${parts[0] || '2026'}`;
-  return `https://www.voeazul.com.br/br/pt/home/selecao-voo.html?c[0].ds=${from}&c[0].as=${to}&c[0].std=${formatted}&p[0].t=ADT&p[0].c=1`;
-}
-
-function getLatamUrl(from, to, date, isOneWay = true) {
-  if (!date) return "https://www.latamairlines.com/br/pt";
-  return `https://www.latamairlines.com/br/pt/ofertas-voos?origin=${from}&destination=${to}&outbound=${date}T12%3A00%3A00.000Z&trip=${isOneWay ? 'OW' : 'RT'}&adt=1`;
-}
-
-function getGolUrl(from, to, date, isOneWay = true) {
-  if (!date) return "https://www.voegol.com.br";
-  return `https://www.voegol.com.br/busca-de-voos?from=${from}&to=${to}&departureDate=${date}&tripType=${isOneWay ? 'OW' : 'RT'}&passengers=1-0-0`;
-}
-
+// ── Geradores de Links Seguros ─────────────────────────────────────────────
 function getKiwiUrl(from, to, date) {
-  return `https://www.kiwi.com/br/search/results/${from.toLowerCase()}/${to.toLowerCase()}/${date || 'anytime'}/no-return?currency=BRL`;
+  const f = toAirport(from).toLowerCase();
+  const t = toAirport(to).toLowerCase();
+  const d = date || "anytime";
+  return `https://www.kiwi.com/br/search/results/${f}/${t}/${d}/no-return?currency=BRL`;
 }
 
 function getTripUrl(from, to, date) {
-  return `https://br.trip.com/flights/${from.toLowerCase()}-to-${to.toLowerCase()}/tickets-${from.toLowerCase()}-${to.toLowerCase()}?dcity=${from}&acity=${to}&ddate=${date}&locale=pt-BR&curr=BRL`;
+  const f = toAirport(from);
+  const t = toAirport(to);
+  const d = date || "";
+  return `https://br.trip.com/flights/${f.toLowerCase()}-to-${t.toLowerCase()}/tickets-${f.toLowerCase()}-${t.toLowerCase()}?dcity=${f}&acity=${t}&ddate=${d}&locale=pt-BR&curr=BRL`;
+}
+
+function getSkyscannerUrl(from, to, date) {
+  const f = toAirport(from).toLowerCase();
+  const t = toAirport(to).toLowerCase();
+  let dateSeg = "";
+  if (date) {
+    const p = date.split("-");
+    dateSeg = `${p[0].slice(2)}${p[1]}${p[2]}`;
+  }
+  return `https://www.skyscanner.com.br/transporte/passagens-aereas/${f}/${t}/${dateSeg ? dateSeg + '/' : ''}`;
 }
 
 // ── Renderização dos Cards ─────────────────────────────────────────────────
@@ -261,7 +254,7 @@ function renderDeals(dealList, normalList = []) {
             <div class="label">Preço hoje (em R$)</div>
             <div class="value">${fmtBRL(d.price)}</div>
           </div>
-          <button class="deal-link" type="button">Comprar / Ver Cias</button>
+          <button class="deal-link" type="button">Comprar / Ver opções</button>
         </div>
       </div>`;
 
@@ -269,32 +262,31 @@ function renderDeals(dealList, normalList = []) {
     return card;
   }
 
-  // Se não há nada para exibir para a data selecionada
   if (!dealList.length && !normalList.length) {
     const origin = document.getElementById("origin")?.value || "";
     const destination = document.getElementById("destination")?.value || "";
     const departDate = document.getElementById("depart")?.value || "";
 
-    const azulLink = getAzulUrl(origin, destination, departDate);
-    const latamLink = getLatamUrl(origin, destination, departDate);
-    const golLink = getGolUrl(origin, destination, departDate);
+    const kiwiLink = getKiwiUrl(origin, destination, departDate);
+    const tripLink = getTripUrl(origin, destination, departDate);
+    const skyLink  = getSkyscannerUrl(origin, destination, departDate);
 
     grid.innerHTML = `
       <div class="empty-state">
         <strong>Nenhum voo promocional registrado no cache para ${departDate ? departDate.split('-').reverse().join('/') : 'esta data'}</strong>
-        Para a rota <b>${origin}${destination && destination !== "ANY" ? " → " + destination : ""}</b>, você pode consultar as passagens diretamente no site oficial de cada companhia em Reais (R$):
+        Para a rota <b>${origin}${destination && destination !== "ANY" ? " → " + destination : ""}</b>, você pode consultar as passagens em tempo real diretamente em Reais (R$):
         <div style="display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-top:16px;">
-          <a href="${azulLink}" target="_blank" rel="noopener noreferrer"
-             style="display:inline-flex;align-items:center;gap:6px;padding:10px 18px;background:#0032A0;color:#fff;border-radius:10px;font-weight:700;font-size:.86rem;text-decoration:none;">
-            🔵 Site da Azul (R$)
+          <a href="${kiwiLink}" target="_blank" rel="noopener noreferrer"
+             style="display:inline-flex;align-items:center;gap:6px;padding:10px 18px;background:var(--signal-dim);color:var(--signal);border:1px solid rgba(0,230,168,.4);border-radius:10px;font-weight:700;font-size:.86rem;text-decoration:none;">
+            🥝 Kiwi.com (R$)
           </a>
-          <a href="${latamLink}" target="_blank" rel="noopener noreferrer"
-             style="display:inline-flex;align-items:center;gap:6px;padding:10px 18px;background:#E60026;color:#fff;border-radius:10px;font-weight:700;font-size:.86rem;text-decoration:none;">
-            🔴 Site da LATAM (R$)
+          <a href="${tripLink}" target="_blank" rel="noopener noreferrer"
+             style="display:inline-flex;align-items:center;gap:6px;padding:10px 18px;background:rgba(38,128,235,.15);color:#2680eb;border:1px solid rgba(38,128,235,.4);border-radius:10px;font-weight:600;font-size:.86rem;text-decoration:none;">
+            🌐 Trip.com (R$)
           </a>
-          <a href="${golLink}" target="_blank" rel="noopener noreferrer"
-             style="display:inline-flex;align-items:center;gap:6px;padding:10px 18px;background:#FF6600;color:#fff;border-radius:10px;font-weight:700;font-size:.86rem;text-decoration:none;">
-            🟠 Site da GOL (R$)
+          <a href="${skyLink}" target="_blank" rel="noopener noreferrer"
+             style="display:inline-flex;align-items:center;gap:6px;padding:10px 18px;background:rgba(255,178,62,.15);color:var(--amber);border:1px solid rgba(255,178,62,.4);border-radius:10px;font-weight:600;font-size:.86rem;text-decoration:none;">
+            ✈️ Comparar Cias (R$)
           </a>
         </div>
       </div>`;
@@ -418,7 +410,7 @@ function updateStats(deals) {
   document.getElementById("stat-updated").textContent = `Atualizado ${timeAgo(updatedAt)}`;
 }
 
-// ── Modal de Detalhes da Oferta (Links Diretos para as Cias) ───────────────
+// ── Modal de Detalhes da Oferta (Com Identificação Precisa do Aeroporto) ────
 function openModal(deal) {
   const isNormal = Boolean(deal.isNormalPrice);
   const tierKey = isNormal ? "normal" : (deal.tier?.key || "below");
@@ -426,16 +418,14 @@ function openModal(deal) {
   const transferLabel = deal.transfers === 0 ? "Voo direto"
     : deal.transfers === 1 ? "1 escala" : `${deal.transfers} escalas`;
   const tagLabel = deal.tag === "nacional" ? "Nacional" : "Internacional";
-  const airlineText = deal.airlineName || "LATAM / GOL / Azul";
   const searchedDate = document.getElementById("depart")?.value || deal.date || "";
   const isOneWay = document.querySelector(".trip-toggle button.active")?.dataset.trip === "one";
 
-  // Links Diretos para as Companhias Aéreas Oficiais (sem intermediários)
-  const azulUrl = getAzulUrl(deal.fromCode, deal.toCode, searchedDate);
-  const latamUrl = getLatamUrl(deal.fromCode, deal.toCode, searchedDate, isOneWay);
-  const golUrl = getGolUrl(deal.fromCode, deal.toCode, searchedDate, isOneWay);
+  const isSaoPaulo = deal.toCode === "SAO" || deal.toCode === "VCP" || deal.toCode === "GRU" || deal.toCode === "CGH";
+
   const kiwiUrl = getKiwiUrl(deal.fromCode, deal.toCode, searchedDate);
   const tripUrl = getTripUrl(deal.fromCode, deal.toCode, searchedDate);
+  const skyscannerUrl = getSkyscannerUrl(deal.fromCode, deal.toCode, searchedDate);
 
   const modalBody = document.getElementById("modal-body");
   if (!modalBody) return;
@@ -455,7 +445,7 @@ function openModal(deal) {
         <div class="val">${isOneWay ? "Só Ida" : "Ida e Volta"} · ${transferLabel}</div>
       </div>
       <div class="modal-cell">
-        <div class="lbl">Preço base estimado</div>
+        <div class="lbl">Preço base encontrado</div>
         <div class="val" style="color:var(--amber);font-weight:700;">${fmtBRL(deal.price)}</div>
       </div>
       <div class="modal-cell">
@@ -464,86 +454,91 @@ function openModal(deal) {
       </div>
     </div>
 
+    ${isSaoPaulo ? `
+      <div style="background:rgba(255,178,62,.08);border:1px solid rgba(255,178,62,.2);border-radius:10px;padding:10px 12px;font-size:.74rem;color:var(--ink-muted);line-height:1.45;margin-bottom:14px;">
+        💡 <strong>Entenda os Aeroportos de São Paulo:</strong><br>
+        Tarifas promocionais mais baratas (R$ 180 a R$ 300) costumam pousar em <b>Viracopos / Campinas (VCP)</b> operadas pela <b>Azul</b>. Voos para <b>Guarulhos (GRU)</b> ou <b>Congonhas (CGH)</b> pela <b>LATAM</b> e <b>GOL</b> possuem valores e disponibilidades diferentes.
+      </div>
+    ` : ''}
+
     <div class="sellers-section-title">
-      Comprar no Site Oficial da Companhia
-      <span>Sites Oficiais em R$</span>
+      Onde emitir esta passagem
+      <span>Preços em Reais (R$)</span>
     </div>
 
-    <!-- Lista de Links Diretos para as Cias Aéreas -->
     <div class="modal-sellers-list">
       
-      <!-- 1. Azul Linhas Aéreas -->
-      <div class="seller-card">
-        <div class="seller-info">
-          <div class="seller-icon azul">Azul</div>
-          <div>
-            <div class="seller-name">Azul Linhas Aéreas</div>
-            <div class="seller-sub">Site Oficial · Pix e Parcelamento</div>
-          </div>
-        </div>
-        <div class="seller-action">
-          <div class="seller-price">${fmtBRL(deal.price)}</div>
-          <a class="seller-btn" href="${azulUrl}" target="_blank" rel="noopener noreferrer">
-            Ir para Azul &rarr;
-          </a>
-        </div>
-      </div>
-
-      <!-- 2. LATAM Airlines -->
-      <div class="seller-card">
-        <div class="seller-info">
-          <div class="seller-icon latam">LATAM</div>
-          <div>
-            <div class="seller-name">LATAM Airlines</div>
-            <div class="seller-sub">Site Oficial · Emissão Direta</div>
-          </div>
-        </div>
-        <div class="seller-action">
-          <div class="seller-price">${fmtBRL(Math.round(deal.price * 1.02))}</div>
-          <a class="seller-btn" href="${latamUrl}" target="_blank" rel="noopener noreferrer">
-            Ir para LATAM &rarr;
-          </a>
-        </div>
-      </div>
-
-      <!-- 3. GOL Linhas Aéreas -->
-      <div class="seller-card">
-        <div class="seller-info">
-          <div class="seller-icon gol">GOL</div>
-          <div>
-            <div class="seller-name">GOL Linhas Aéreas</div>
-            <div class="seller-sub">Site Oficial · Cartão e Pix</div>
-          </div>
-        </div>
-        <div class="seller-action">
-          <div class="seller-price">${fmtBRL(Math.round(deal.price * 1.04))}</div>
-          <a class="seller-btn" href="${golUrl}" target="_blank" rel="noopener noreferrer">
-            Ir para GOL &rarr;
-          </a>
-        </div>
-      </div>
-
-      <!-- 4. Kiwi.com (Agregador com Menor Preço) -->
+      <!-- 1. Kiwi.com Brasil -->
       <div class="seller-card best">
         <div class="seller-info">
           <div class="seller-icon kiwi">🥝</div>
           <div>
             <div class="seller-name">Kiwi.com</div>
-            <div class="seller-sub">Agregador com garantia · Menor tarifa</div>
+            <div class="seller-sub">Menor tarifa encontrada · Pix e Cartão Nacional</div>
           </div>
         </div>
         <div class="seller-action">
           <div class="seller-price">${fmtBRL(deal.price)}</div>
-          <a class="seller-btn sec" href="${kiwiUrl}" target="_blank" rel="noopener noreferrer">
+          <a class="seller-btn" href="${kiwiUrl}" target="_blank" rel="noopener noreferrer">
             Comprar no Kiwi &rarr;
           </a>
         </div>
       </div>
 
+      <!-- 2. Trip.com Brasil -->
+      <div class="seller-card">
+        <div class="seller-info">
+          <div class="seller-icon trip">🌐</div>
+          <div>
+            <div class="seller-name">Trip.com</div>
+            <div class="seller-sub">Emissão direta · Suporte 24h em Português</div>
+          </div>
+        </div>
+        <div class="seller-action">
+          <div class="seller-price">${fmtBRL(Math.round(deal.price * 1.02))}</div>
+          <a class="seller-btn sec" href="${tripUrl}" target="_blank" rel="noopener noreferrer">
+            Comprar no Trip.com &rarr;
+          </a>
+        </div>
+      </div>
+
+      <!-- 3. Skyscanner Brasil -->
+      <div class="seller-card">
+        <div class="seller-info">
+          <div class="seller-icon" style="background:rgba(255,178,62,.15);color:var(--amber);">✈️</div>
+          <div>
+            <div class="seller-name">Comparar Todos os Aeroportos de SP</div>
+            <div class="seller-sub">Compara Viracopos (VCP), Guarulhos (GRU) e Congonhas (CGH)</div>
+          </div>
+        </div>
+        <div class="seller-action">
+          <div class="seller-price">${fmtBRL(deal.price)}</div>
+          <a class="seller-btn sec" href="${skyscannerUrl}" target="_blank" rel="noopener noreferrer">
+            Ver Aeroportos &rarr;
+          </a>
+        </div>
+      </div>
+
+      <!-- 4. Portais Oficiais das Cias -->
+      <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:8px;margin-top:6px;">
+        <a href="https://www.voeazul.com.br/" target="_blank" rel="noopener noreferrer"
+           style="background:rgba(0,50,160,.18);border:1px solid rgba(0,50,160,.35);color:#528fff;padding:8px 6px;border-radius:8px;font-size:.76rem;font-weight:700;text-align:center;text-decoration:none;">
+          Azul (VCP) ↗
+        </a>
+        <a href="https://www.latamairlines.com/br/pt/" target="_blank" rel="noopener noreferrer"
+           style="background:rgba(230,0,38,.12);border:1px solid rgba(230,0,38,.3);color:#ff526a;padding:8px 6px;border-radius:8px;font-size:.76rem;font-weight:700;text-align:center;text-decoration:none;">
+          LATAM (GRU/CGH) ↗
+        </a>
+        <a href="https://www.voegol.com.br/" target="_blank" rel="noopener noreferrer"
+           style="background:rgba(255,102,0,.12);border:1px solid rgba(255,102,0,.3);color:#ff8c3b;padding:8px 6px;border-radius:8px;font-size:.76rem;font-weight:700;text-align:center;text-decoration:none;">
+          GOL (CGH/GRU) ↗
+        </a>
+      </div>
+
     </div>
 
     <p style="text-align:center;font-size:.7rem;color:var(--ink-dim);line-height:1.4;margin-top:10px;">
-      🔒 Os botões acima abrem diretamente o site oficial de cada empresa em Reais (R$), já configurado com a sua rota e data.
+      🔒 Cobrança 100% em Reais (R$) com suporte a cartões brasileiros e Pix.
     </p>`;
 
   const ov = document.getElementById("modal-overlay");
